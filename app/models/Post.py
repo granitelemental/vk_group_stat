@@ -10,7 +10,6 @@ class Post(BaseModel):
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
     date = Column(DateTime, nullable = True)
     data = Column(JSON)
-    likes_count = Column(JSON)
     
 
     # Relations

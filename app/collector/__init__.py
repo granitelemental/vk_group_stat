@@ -7,6 +7,7 @@ from app.models.db import session, engine
 from app.models.User import User
 from app.models.Post import Post
 from app.models.Like import Like
+import numpy as np
 
 from app.models.db import BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
 
@@ -27,11 +28,11 @@ def upsert(model, clause, **kwargs):
 def start_collector():
     group_id = vk_api.utils.resolveScreenName(screen_name="ewe.nemnogo").get('object_id')
 
-    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=1)
+    posts = vk_api.wall.get(owner_id=-group_id, offset=1, count=2)
 
-
-    # p_count = posts['count']
     p_items = posts['items']
+
+    fields = ["sex","bdate", "city","country","home_town","schools","relation"]
 
     for post in p_items:
         localdate = datetime.utcfromtimestamp(post['date']) + timedelta(hours=3)
@@ -46,11 +47,11 @@ def start_collector():
                                     count=max_count)
                                     
         while offset < likes["count"]:
-            likes = likes = vk_api.likes.getList(type = "post", 
-                                                item_id = post["id"], 
-                                                owner_id = post["owner_id"], 
-                                                offset = offset, 
-                                                count = max_count)
+            likes = vk_api.likes.getList(type = "post", 
+                                        item_id = post["id"], 
+                                        owner_id = post["owner_id"], 
+                                        offset = offset, 
+                                        count = max_count)
             like_list.extend(likes["items"])
             offset += max_count
 
@@ -58,20 +59,25 @@ def start_collector():
         upsert(Post, Post.id == post['id'], 
             data = post, 
             id = post["id"],
-            date = localdate, 
-            likes_count = post['likes']['count'],
-            likes = {"user_ids": like_list}
+            date = localdate,
             )
             
         for user_id in like_list:
 
+            user = vk_api.users.get(user_ids=user_id, fields=fields)[0]
+
+            
+            kwargs = {key: user[key] if key in user.keys() else None for key in fields}
+            print("---------->")
+            print(kwargs)
+
             upsert(User, (User.id == user_id), 
-            id = user_id,
-            )
+                                            id = user_id,
+                                            **kwargs)
 
             upsert(Like, (Like.user_id == user_id) and (Like.post_id == post['id']), 
-            user_id = user_id,
-            post_id = post['id'],)
+                                                                                user_id = user_id,
+                                                                                post_id = post['id'],)
 
 
 

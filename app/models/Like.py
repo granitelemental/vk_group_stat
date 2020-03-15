@@ -10,5 +10,3 @@ class Like(BaseModel):
 
     post_id = Column(Integer, ForeignKey('posts.id'))
     user_id = Column(Integer, ForeignKey('users.id'))
-
-    date = Column(DateTime)
