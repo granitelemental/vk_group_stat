@@ -10,10 +10,10 @@ services:
         ports:
             - 5432:5432
 
-    app:
+    collector:
         build:
             context: ./
-            dockerfile: ./Dockerfile
+            dockerfile: ./Dockerfile.collector
         environment:
             - POSTGRES_USER=test
             - POSTGRES_PASSWORD=test

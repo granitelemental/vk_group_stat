@@ -8,10 +8,10 @@ class Post(BaseModel):
     __tablename__ = 'posts'
 
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable = True)
     date = Column(DateTime, nullable = True)
     data = Column(JSON)
-    likes_count = Column(Integer)
+    likes_count = Column(JSON)
+    
 
     # Relations
     likes = relationship('Like', backref='posts')
