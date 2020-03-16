@@ -16,23 +16,26 @@ vk_api = vk.API(vk_session, v = 5.8)
 
 BaseModel.metadata.create_all(engine)
 
-def upsert(model, clause, **kwargs):
+def upsert(model, clause, pass_if_exists=False, **kwargs):
     obj = session.query(model).filter(clause).one_or_none() # возвращает объект, если находит один айдишник в базе, 0 - если не находит ни одного
-
+    
     if obj:
+        if pass_if_exists:
+            return
         session.query(model).filter(clause).update(kwargs)
-    else:
+    else:             
         session.add(model(**kwargs))
     session.commit()
+
 
 def start_collector():
     group_id = vk_api.utils.resolveScreenName(screen_name="ewe.nemnogo").get('object_id')
 
-    posts = vk_api.wall.get(owner_id=-group_id, offset=1, count=2)
+    posts = vk_api.wall.get(owner_id=-group_id, offset=1, count=100)
 
     p_items = posts['items']
 
-    fields = ["sex","bdate", "city","country","home_town","schools","relation"]
+    user_fields = ["sex","bdate", "city","country","home_town","schools","relation"]
 
     for post in p_items:
         localdate = datetime.utcfromtimestamp(post['date']) + timedelta(hours=3)
@@ -64,18 +67,17 @@ def start_collector():
             
         for user_id in like_list:
 
-            user = vk_api.users.get(user_ids=user_id, fields=fields)[0]
+            user = vk_api.users.get(user_ids=user_id, fields=user_fields)[0]
 
-            
-            kwargs = {key: user[key] if key in user.keys() else None for key in fields}
+            kwargs = {key: user[key] if key in user.keys() else None for key in user_fields}
             print("---------->")
             print(kwargs)
 
-            upsert(User, (User.id == user_id), 
+            upsert(User, (User.id == user_id), pass_if_exists=True,
                                             id = user_id,
                                             **kwargs)
 
-            upsert(Like, (Like.user_id == user_id) and (Like.post_id == post['id']), 
+            upsert(Like, (Like.user_id == user_id) and (Like.post_id == post['id']), pass_if_exists=True,
                                                                                 user_id = user_id,
                                                                                 post_id = post['id'],)
 
