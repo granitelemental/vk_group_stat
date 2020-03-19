@@ -1,4 +1,5 @@
 import vk
+import json
 from datetime import datetime, timedelta
 
 from sqlalchemy.ext.declarative import declarative_base
@@ -16,12 +17,9 @@ vk_api = vk.API(vk_session, v = 5.8)
 
 BaseModel.metadata.create_all(engine)
 
-def upsert(model, clause, pass_if_exists=False, **kwargs):
+def upsert(model, clause, **kwargs):
     obj = session.query(model).filter(clause).one_or_none() # возвращает объект, если находит один айдишник в базе, 0 - если не находит ни одного
-    
     if obj:
-        if pass_if_exists:
-            return
         session.query(model).filter(clause).update(kwargs)
     else:             
         session.add(model(**kwargs))
@@ -29,57 +27,58 @@ def upsert(model, clause, pass_if_exists=False, **kwargs):
 
 
 def start_collector():
-    group_id = vk_api.utils.resolveScreenName(screen_name="ewe.nemnogo").get('object_id')
-
-    posts = vk_api.wall.get(owner_id=-group_id, offset=1, count=100)
-
+    group_id = vk_api.utils.resolveScreenName(screen_name="ideal_gf").get('object_id')
+    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
     p_items = posts['items']
 
-    user_fields = ["sex","bdate", "city","country","home_town","schools","relation"]
+    post_like_usr_ids = {post["id"]: [] for post in p_items}
+    post_like_usr_ids["all_usr_ids"] = []
 
     for post in p_items:
-        localdate = datetime.utcfromtimestamp(post['date']) + timedelta(hours=3)
-        
-        like_list = []
         max_count = 1000
         offset = 0
-        likes = vk_api.likes.getList(type="post", 
-                                    item_id=post["id"], 
-                                    owner_id=post["owner_id"], 
-                                    offset=offset, 
-                                    count=max_count)
-                                    
+        likes = vk_api.likes.getList(type="post", item_id=post["id"], owner_id=post["owner_id"], offset=offset, count=max_count)
         while offset < likes["count"]:
-            likes = vk_api.likes.getList(type = "post", 
-                                        item_id = post["id"], 
-                                        owner_id = post["owner_id"], 
-                                        offset = offset, 
-                                        count = max_count)
-            like_list.extend(likes["items"])
+            likes = vk_api.likes.getList(type = "post", item_id = post["id"], owner_id = post["owner_id"], offset = offset, count = max_count)
+
+            post_like_usr_ids[post["id"]].extend(likes["items"])
+            post_like_usr_ids["all_usr_ids"] = list(set(likes["items"] + post_like_usr_ids["all_usr_ids"]))
             offset += max_count
+        
+
+        localdate = datetime.utcfromtimestamp(post['date']) + timedelta(hours=3)
+        upsert(Post, Post.id == post['id'], data = post, id = post["id"], date = localdate)
+    user_fields = ["sex","bdate", "city","country","home_town","schools","relation"]
+    
 
 
-        upsert(Post, Post.id == post['id'], 
-            data = post, 
-            id = post["id"],
-            date = localdate,
-            )
-            
-        for user_id in like_list:
-
+    for user_id in post_like_usr_ids["all_usr_ids"]:
+        if not session.query(User).filter(User.id == user_id).one_or_none():
+           
             user = vk_api.users.get(user_ids=user_id, fields=user_fields)[0]
-
             kwargs = {key: user[key] if key in user.keys() else None for key in user_fields}
-            print("---------->")
-            print(kwargs)
+            kwargs["id"] = user_id
 
-            upsert(User, (User.id == user_id), pass_if_exists=True,
-                                            id = user_id,
-                                            **kwargs)
+            if kwargs["bdate"] != None:
+                if len(kwargs["bdate"].split(".")) == 3:
+                    kwargs["bdate"] = datetime.strptime(kwargs["bdate"], "%d.%m.%Y")
+                else:
+                    kwargs["bdate"] = None
+            else:
+                kwargs["bdate"] = None
 
-            upsert(Like, (Like.user_id == user_id) and (Like.post_id == post['id']), pass_if_exists=True,
-                                                                                user_id = user_id,
-                                                                                post_id = post['id'],)
+            kwargs["city"] = [kwargs["city"]["title"] if kwargs["city"] else None][0]
+            kwargs["country"] = [kwargs["country"]["title"] if kwargs["country"] else None][0]
+            if kwargs["schools"]:
+                kwargs["schools"] = [school["name"] for school in kwargs["schools"]]
+
+            session.add(User(**kwargs))
+            session.commit()
+
+    for post in p_items:
+        for user_id in post_like_usr_ids[post["id"]]:
+            upsert(Like, (Like.user_id == user_id) & (Like.post_id == post['id']), user_id = user_id, post_id = post['id'])
+
 
 
 

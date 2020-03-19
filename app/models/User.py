@@ -1,4 +1,4 @@
-from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, JSON
+from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, JSON, ARRAY
 from app.models.db import BaseModel
 
 class User(BaseModel):
@@ -6,9 +6,9 @@ class User(BaseModel):
 
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
     sex = Column(Integer)
-    bdate = Column(String)
-    city = Column(JSON)
-    country = Column(JSON)
+    bdate = Column(DateTime)
+    city = Column(String)
+    country = Column(String)
     home_town = Column(String)
-    schools = Column(JSON)
+    schools = Column(ARRAY(String))
     relation = Column(Integer)
