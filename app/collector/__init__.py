@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timedelta
 
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import and_
 
 from app.models.db import session, engine
 from app.models.User import User
@@ -28,7 +29,7 @@ def upsert(model, clause, **kwargs):
 
 def start_collector():
     group_id = vk_api.utils.resolveScreenName(screen_name="ideal_gf").get('object_id')
-    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
+    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=3)
     p_items = posts['items']
 
     post_like_usr_ids = {post["id"]: [] for post in p_items}
@@ -77,11 +78,5 @@ def start_collector():
 
     for post in p_items:
         for user_id in post_like_usr_ids[post["id"]]:
-            upsert(Like, (Like.user_id == user_id) & (Like.post_id == post['id']), user_id = user_id, post_id = post['id'])
-
-
-
-
-
-
+            upsert(Like, and_(Like.user_id == user_id, Like.post_id == post['id']), user_id = user_id, post_id = post['id'])
         
