@@ -67,20 +67,21 @@ def start_collector():
     start_time = time.time()
     #print(start_time)
 
-    print(len(post_like_usr_ids["all_usr_ids"]))
+    query = session.query(User)
+    existing_user_ids = query.filter(User.id.in_(post_like_usr_ids["all_usr_ids"]))
+    post_like_usr_ids["all_usr_ids"] = list(set(post_like_usr_ids["all_usr_ids"]) - set(existing_user_ids))
 
-    for i, user_id in enumerate(post_like_usr_ids["all_usr_ids"]):
-        if session.query(User).filter(User.id == user_id).one_or_none():
-            post_like_usr_ids["all_usr_ids"].pop(i)
-
-    print(len(post_like_usr_ids["all_usr_ids"]))
-           
     users = vk_api.users.get(user_ids=post_like_usr_ids["all_usr_ids"], fields=user_fields)
 
+    print(users)
+
+    
+
     for user in users:
+        print("-------------->")
         print(user)
         kwargs = {key: user[key] if key in user.keys() else None for key in user_fields}
-        kwargs["id"] = user_id
+        kwargs["id"] = user["id"]
 
         if kwargs["bdate"] != None:
             if len(kwargs["bdate"].split(".")) == 3:
