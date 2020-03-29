@@ -1,4 +1,4 @@
-from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, ForeignKey
+from sqlalchemy import Column, Integer, ForeignKey
 
 from app.models.db import BaseModel
 
@@ -10,3 +10,4 @@ class Like(BaseModel):
 
     post_id = Column(Integer, ForeignKey('posts.id'))
     user_id = Column(Integer, ForeignKey('users.id'))
+    
