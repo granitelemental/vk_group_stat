@@ -7,7 +7,7 @@ class User(BaseModel):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
-    vk_id = Column(Integer, nullable = False)
+    vk_id = Column(Integer, unique=True, nullable = False)
     sex = Column(Integer)
     bdate = Column(DateTime)
     city = Column(String)
