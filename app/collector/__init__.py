@@ -7,7 +7,7 @@ import requests
 import numpy as np
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import and_
+from sqlalchemy import and_, tuple_
 
 from app.models.db import session, engine
 from app.models.User import User
@@ -134,19 +134,16 @@ def start_collector():
     session.bulk_save_objects(user_objects)
     session.commit()
 
-
     print("Adding subscriptions")
-    subscriber_objects = []
+    new_subscriptions = [(sub["id"], group_id) for sub in subscribers]
+    existing_subscriptions = session.query() \
+        .with_entities(Subscription.user_id, Subscription.group_id) \
+        .filter(tuple_(Subscription.user_id, Subscription.group_id) \
+        .in_(new_subscriptions)).all()
 
-    existing_subscriptions = [(sub["user_id"], sub["group_id"]) for sub in subscribers]
-
-    existing_subscriptions = session.query(Subscription).filter((Subscription.user_id, Subscription.group_id).in_(existing_subscriptions))
-    print(existing_subscriptions)
-    # for sub in subscribers:
-    #     if not session.query(Subscription).filter(Subscription.user_id==sub["id"], Subscription.group_id==group_id).one_or_none():
-    #         subscriber_objects.append(Subscription(user_id=sub["id"], group_id=group_id)) 
-    # session.bulk_save_objects(subscriber_objects)
-    # session.commit()
+    subscriber_objects = [Subscription(user_id=sub[0], group_id=sub[1]) for sub in new_subscriptions if sub not in existing_subscriptions] 
+    session.bulk_save_objects(subscriber_objects)
+    session.commit()
 
     print("Collecting likes:")
     likes = []
