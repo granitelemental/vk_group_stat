@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, Boolean
 from app.models.db import BaseModel
 
 class Subscription(BaseModel):
@@ -8,6 +8,7 @@ class Subscription(BaseModel):
 
     group_id = Column(Integer, ForeignKey('groups.vk_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.vk_id'), nullable = False)
+    is_subscribed = Column(Boolean, nullable = False)
 
     __table_args__ = (UniqueConstraint('group_id', 'user_id', name='_group_user_uc'),
                      )

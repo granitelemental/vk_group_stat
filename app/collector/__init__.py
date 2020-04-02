@@ -81,7 +81,6 @@ def create_user_objects(users):
     return user_objects
 
 def start_collector():
-
     group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id')
     print("Updating groups")
     upsert(Group, Group.vk_id==group_id, vk_id=group_id)
@@ -135,15 +134,48 @@ def start_collector():
     session.commit()
 
     print("Adding subscriptions")
-    new_subscriptions = [(sub["id"], group_id) for sub in subscribers]
-    existing_subscriptions = session.query() \
+    current_subscriptions_vk = [(sub["id"], group_id) for sub in subscribers]
+
+    existing_subscriptions_db = session.query() \
         .with_entities(Subscription.user_id, Subscription.group_id) \
         .filter(tuple_(Subscription.user_id, Subscription.group_id) \
-        .in_(new_subscriptions)).all()
-
-    subscriber_objects = [Subscription(user_id=sub[0], group_id=sub[1]) for sub in new_subscriptions if sub not in existing_subscriptions] 
-    session.bulk_save_objects(subscriber_objects)
+        .in_(current_subscriptions_vk)).all()
+    new_subscription_mappings = [{
+        "user_id": sub[0], 
+        "group_id": sub[1], 
+        "is_subscribed": True} 
+        for sub in current_subscriptions_vk
+        if sub not in existing_subscriptions_db]
+    session.bulk_insert_mappings(Subscription, new_subscription_mappings)
     session.commit()
+
+    resubscribed_users_db = session.query() \
+        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
+        .filter(and_(tuple_(Subscription.user_id, Subscription.group_id) \
+        .in_(current_subscriptions_vk),
+        (Subscription.is_subscribed==False))).all()
+    resubscribed_user_mappings = [{
+        "id": sub[0],
+        "user_id": sub[1], 
+        "group_id": sub[2], 
+        "is_subscribed": True}
+        for sub in resubscribed_users_db]
+    session.bulk_update_mappings(Subscription, resubscribed_user_mappings)
+    session.commit()
+
+    deleted_subscriptions_db = session.query() \
+        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
+        .filter(tuple_(Subscription.user_id, Subscription.group_id) \
+        .notin_(current_subscriptions_vk)).all()
+    deleted_subscriber_mappings = [{
+        "id": sub[0],
+        "user_id": sub[1], 
+        "group_id": sub[2], 
+        "is_subscribed": False}
+        for sub in deleted_subscriptions_db]
+    session.bulk_update_mappings(Subscription, deleted_subscriber_mappings)
+    session.commit()
+
 
     print("Collecting likes:")
     likes = []
