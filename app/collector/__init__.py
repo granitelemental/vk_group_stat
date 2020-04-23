@@ -81,6 +81,19 @@ def pick_keys(d, *keys):
     except:
         print(f"Invalid keys {keys} for dict {d}")
 
+def get_posts(group_id):
+    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
+    return = posts['items']
+
+def get_likes(posts, group_id):
+    pass
+
+def get_comments(posts, group_id):
+    pass
+
+def compute_user_ids(likes, comments):
+    pass
+
 def start_collector():
     group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id')
     
@@ -88,19 +101,15 @@ def start_collector():
     upsert(Group, Group.vk_id==group_id, vk_id=group_id)
 
     log.debug("Getting posts info and upserting posts:")
-    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
 
-    post_items = posts['items']
-    post_like_usr_ids = {post["id"]: [] for post in post_items}
-    post_comments = []
-    post_like_usr_ids["all_usr_ids"] = []
+    posts = get_posts(group_id)
 
-    # {
-    #     '12312': []
-    #     'all_usr_ids': []
-    # }    
+    all_likes = get_likes(group_id, posts)
+    all_comments = get_comments(group_id, posts)
+
+    all_users_ids = compute_user_ids(all_likes, all_comments)
    
-    for post in tqdm.tqdm(post_items):
+    for post in tqdm.tqdm(posts):
         def get_likes(offset, count):
             res = vk_api.likes.getList(
                 max_count=count,
@@ -132,9 +141,8 @@ def start_collector():
             comments_count = post["comments"]["count"],
             reposts_count = post["reposts"]["count"])
 
-        collect_post_entities(post, post_likes, post_comments)
 
-   
+
     query = session.query(Comment)
 
     keys = "group_id", "post_id", "user_id", "date"#, "data"
@@ -164,12 +172,12 @@ def start_collector():
 
 
 
-    print("Updating comments")
+    # print("Updating comments")
     
-    query = session.query(User)
-    existing_user_ids = query.filter(User.vk_id.in_(post_like_usr_ids["all_usr_ids"])).all()
-    existing_user_ids = [user.vk_id for user in existing_user_ids]
-    post_like_usr_ids["all_usr_ids"] = [id for id in  post_like_usr_ids["all_usr_ids"] if id not in existing_user_ids ]
+    # query = session.query(User)
+    # existing_user_ids = query.filter(User.vk_id.in_(post_like_usr_ids["all_usr_ids"])).all()
+    # existing_user_ids = [user.vk_id for user in existing_user_ids]
+    # post_like_usr_ids["all_usr_ids"] = [id for id in  post_like_usr_ids["all_usr_ids"] if id not in existing_user_ids ]
 
     print("Getting users info:")
     users = []
