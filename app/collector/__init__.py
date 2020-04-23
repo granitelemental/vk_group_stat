@@ -24,6 +24,8 @@ from app.utils.log import init_logger
 from app.utils.db import upsert
 from app.utils.collector import get_all
 
+from app.collector.functions import collect_post_entities
+
 app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d8a3f" # TODO в конфиг
 comunity_token = "1d05d5656b70b874e93a44b5821a378e12c48f7f249d5cdf10f81e0ca970394f144209f39480ccb02cc09" # TODO в кофиг
 
@@ -99,7 +101,7 @@ def start_collector():
     # }    
    
     for post in tqdm.tqdm(post_items):
-        def get_likes(count, offset):
+        def get_likes(offset, count):
             res = vk_api.likes.getList(
                 max_count=count,
                 type="post", 
@@ -108,25 +110,21 @@ def start_collector():
             )
             return res["items"]
 
-        post_like_usr_ids[post["id"]] = get_all(get_likes, 200)
+        def get_comments(offset, count):
+            res = vk_api.wall.getComments(
+                max_count=count,
+                owner_id=-group_id, 
+                post_id=post["id"]
+            )
 
-        comments = get_all(get_function=vk_api.wall.getComments,
-                                            max_count=200,
-                                            items_to_get="items",
-                                            owner_id=-group_id, 
-                                            post_id=post["id"])
+            return res["items"]
 
-        post_comments.extend([{"group_id": group_id, 
-                                "post_id": post["id"],
-                                "user_id": item["from_id"],
-                                "date": local_date_from_timestamp(item["date"]),
-                                "data": item["text"]} 
-                                for item in comments])
-        
-        post_like_usr_ids["all_usr_ids"] = list(set(post_like_usr_ids[post["id"]] + post_like_usr_ids["all_usr_ids"]))
+        post_likes = get_all(get_likes, 200)
+        post_comments = get_all(get_comments, 200)
+
         localdate = local_date_from_timestamp(post['date'])
 
-        upsert(Post, Post.vk_id == post['id'], \
+        upsert(Post, Post.vk_id == post['id'],
             group_id = group_id, 
             data = post, 
             vk_id = post["id"], 
@@ -134,7 +132,7 @@ def start_collector():
             comments_count = post["comments"]["count"],
             reposts_count = post["reposts"]["count"])
 
-        print(post['id'])
+        collect_post_entities(post, post_likes, post_comments)
 
    
     query = session.query(Comment)
