@@ -18,53 +18,41 @@ from app.models.Comment import Comment
 from app.models.Subscription import Subscription
 from app.models.SubscriptionEvent import SubscriptionEvent
 
-
 from app.models.db import BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
 
-app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d8a3f"
-comunity_token = "1d05d5656b70b874e93a44b5821a378e12c48f7f249d5cdf10f81e0ca970394f144209f39480ccb02cc09"
+from app.utils.log import init_logger
+from app.utils.db import upsert
+from app.utils.collector import get_all
+
+app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d8a3f" # TODO в конфиг
+comunity_token = "1d05d5656b70b874e93a44b5821a378e12c48f7f249d5cdf10f81e0ca970394f144209f39480ccb02cc09" # TODO в кофиг
 
 vk_session = vk.Session(access_token=app_token)
 vk_api = vk.API(vk_session, v = 5.8)
 
 BaseModel.metadata.create_all(engine)
 
-def upsert(model, clause, **kwargs):
-    obj = session.query(model).filter(clause).one_or_none() # возвращает объект, если находит один айдишник в базе, 0 - если не находит ни одного
-    if obj:
-        session.query(model).filter(clause).update(kwargs)
-    else:             
-        session.add(model(**kwargs))
-    session.commit()
-
 def local_date_from_timestamp(ts):
     return datetime.utcfromtimestamp(ts) + timedelta(hours=3)
 
+log = init_logger('collector', 'debug')
 
-def get_all(get_function, max_count, items_to_get, **qwargs):
-    """get_function - something like vk_api.groups.getMembers;
-    max_count - max count of items;
-    items_to_get - 'users' or something else;
-    **qwargs - e.g. user fields"""
-    max_count = max_count
-    offset = 0
-    all_items = []
-    result = get_function(**qwargs, offset=offset, count=max_count)
-    
-    while offset < result["count"]:
-        result = get_function(**qwargs, offset=offset, count=max_count)
-        all_items.extend(result[items_to_get])
-        offset += max_count
-    return all_items
+log.error('dsds')
 
 def collect_subcriptions(group_id, comunity_token):
     vk_session = vk.Session(access_token=comunity_token)
     vk_api = vk.API(vk_session, v = 5.8)
-    subscribers = get_all(get_function=vk_api.groups.getMembers,
-                        max_count=200,
-                        items_to_get = "users",
-                        group_id=group_id,
-                        fields=User.vk_fields)
+
+    def get_members(offset, count):
+        res = vk_api.groups.getMembers(
+            offset=offset,
+            max_count=count,
+            group_id=group_id,
+            fields=User.vk_fields
+        )
+        return res["users"]
+
+    subscribers = get_all(get_members, 200)
     return subscribers
 
 def create_user_objects(users):
@@ -92,25 +80,36 @@ def pick_keys(d, *keys):
         print(f"Invalid keys {keys} for dict {d}")
 
 def start_collector():
-    group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id') # 
-    print("Updating groups")
+    group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id')
+    
+    log.debug("Updating groups")
     upsert(Group, Group.vk_id==group_id, vk_id=group_id)
 
-    print("Getting posts info and upserting posts:")
+    log.debug("Getting posts info and upserting posts:")
     posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
+
     post_items = posts['items']
     post_like_usr_ids = {post["id"]: [] for post in post_items}
     post_comments = []
     post_like_usr_ids["all_usr_ids"] = []
-    
+
+    # {
+    #     '12312': []
+    #     'all_usr_ids': []
+    # }    
    
     for post in tqdm.tqdm(post_items):
-        post_like_usr_ids[post["id"]] = get_all(get_function=vk_api.likes.getList,
-                                                max_count=200,
-                                                items_to_get = "items",
-                                                type="post", 
-                                                item_id=post["id"], 
-                                                owner_id=post["owner_id"])
+        def get_likes(count, offset):
+            res = vk_api.likes.getList(
+                max_count=count,
+                type="post", 
+                item_id=post["id"], 
+                owner_id=post["owner_id"]
+            )
+            return res["items"]
+
+        post_like_usr_ids[post["id"]] = get_all(get_likes, 200)
+
         comments = get_all(get_function=vk_api.wall.getComments,
                                             max_count=200,
                                             items_to_get="items",
