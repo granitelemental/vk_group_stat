@@ -7,7 +7,7 @@ class LikeSchema(SQLAlchemySchema):
         model = Like
         load_instance = True  # Optional: deserialize to model instances
 
-    id = auto_field()
+    id = auto_field() 
     post_id = auto_field()
     user_id = auto_field()
 

@@ -7,14 +7,16 @@ import requests
 import numpy as np
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import and_, tuple_
+from sqlalchemy import and_, tuple_, func
 
 from app.models.db import session, engine
 from app.models.User import User
 from app.models.Post import Post
 from app.models.Like import Like
 from app.models.Group import Group
+from app.models.Comment import Comment
 from app.models.Subscription import Subscription
+from app.models.SubscriptionEvent import SubscriptionEvent
 
 
 from app.models.db import BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
@@ -35,6 +37,9 @@ def upsert(model, clause, **kwargs):
         session.add(model(**kwargs))
     session.commit()
 
+def local_date_from_timestamp(ts):
+    return datetime.utcfromtimestamp(ts) + timedelta(hours=3)
+
 
 def get_all(get_function, max_count, items_to_get, **qwargs):
     """get_function - something like vk_api.groups.getMembers;
@@ -45,7 +50,7 @@ def get_all(get_function, max_count, items_to_get, **qwargs):
     offset = 0
     all_items = []
     result = get_function(**qwargs, offset=offset, count=max_count)
-
+    
     while offset < result["count"]:
         result = get_function(**qwargs, offset=offset, count=max_count)
         all_items.extend(result[items_to_get])
@@ -80,8 +85,14 @@ def create_user_objects(users):
         user_objects.append(User(**kwargs))
     return user_objects
 
+def pick_keys(d, *keys):
+    try:
+        return tuple([d[key] for key in keys])
+    except:
+        print(f"Invalid keys {keys} for dict {d}")
+
 def start_collector():
-    group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id')
+    group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id') # 
     print("Updating groups")
     upsert(Group, Group.vk_id==group_id, vk_id=group_id)
 
@@ -89,20 +100,75 @@ def start_collector():
     posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
     post_items = posts['items']
     post_like_usr_ids = {post["id"]: [] for post in post_items}
+    post_comments = []
     post_like_usr_ids["all_usr_ids"] = []
-
+    
+   
     for post in tqdm.tqdm(post_items):
         post_like_usr_ids[post["id"]] = get_all(get_function=vk_api.likes.getList,
                                                 max_count=200,
-                                                type="post", 
                                                 items_to_get = "items",
+                                                type="post", 
                                                 item_id=post["id"], 
                                                 owner_id=post["owner_id"])
+        comments = get_all(get_function=vk_api.wall.getComments,
+                                            max_count=200,
+                                            items_to_get="items",
+                                            owner_id=-group_id, 
+                                            post_id=post["id"])
 
+        post_comments.extend([{"group_id": group_id, 
+                                "post_id": post["id"],
+                                "user_id": item["from_id"],
+                                "date": local_date_from_timestamp(item["date"]),
+                                "data": item["text"]} 
+                                for item in comments])
+        
         post_like_usr_ids["all_usr_ids"] = list(set(post_like_usr_ids[post["id"]] + post_like_usr_ids["all_usr_ids"]))
-        localdate = datetime.utcfromtimestamp(post['date']) + timedelta(hours=3)
-        upsert(Post, Post.vk_id == post['id'], group_id = group_id, data = post, vk_id = post["id"], date = localdate)
+        localdate = local_date_from_timestamp(post['date'])
 
+        upsert(Post, Post.vk_id == post['id'], \
+            group_id = group_id, 
+            data = post, 
+            vk_id = post["id"], 
+            date = localdate,
+            comments_count = post["comments"]["count"],
+            reposts_count = post["reposts"]["count"])
+
+        print(post['id'])
+
+   
+    query = session.query(Comment)
+
+    keys = "group_id", "post_id", "user_id", "date"#, "data"
+
+    current_post_comments = [pick_keys(comment, *keys) for comment in post_comments]
+    print("----->")
+    # print(current_post_comments)
+    existing_post_comments = session.query() \
+        .with_entities(Comment.group_id, Comment.post_id, Comment.user_id, Comment.date) \
+        .filter(tuple_(Comment.group_id, Comment.post_id, Comment.user_id, Comment.date) \
+        .in_([pick_keys(comment, *keys) for comment in post_comments])).all()
+
+    print(existing_post_comments)
+    print(len(existing_post_comments))
+
+    current_post_comments = [comment for comment in post_comments \
+        if pick_keys(comment, *keys) not in existing_post_comments]
+    # print("----->")
+    # print(current_post_comments[0].values())
+    keys = "group_id", "post_id", "user_id", "date", "data"
+    current_post_comment_mappings = [dict(zip(keys, comment.values())) for comment in current_post_comments]
+    # print("-------mappings")
+    # print(current_post_comment_mappings)
+    session.bulk_insert_mappings(Comment, current_post_comment_mappings)
+    session.commit()
+
+
+
+
+    print("Updating comments")
+    
     query = session.query(User)
     existing_user_ids = query.filter(User.vk_id.in_(post_like_usr_ids["all_usr_ids"])).all()
     existing_user_ids = [user.vk_id for user in existing_user_ids]
@@ -129,17 +195,53 @@ def start_collector():
     print("Adding users with subscribers")
     query = session.query(User)
     existing_user_ids = [item.vk_id for item in query.filter(User.vk_id.in_([sub["id"] for sub in subscribers])).all()]
+
     user_objects = create_user_objects([sub for sub in subscribers if sub["id"] not in existing_user_ids])
     session.bulk_save_objects(user_objects)
     session.commit()
 
     print("Adding subscriptions")
     current_subscriptions_vk = [(sub["id"], group_id) for sub in subscribers]
-
     existing_subscriptions_db = session.query() \
         .with_entities(Subscription.user_id, Subscription.group_id) \
         .filter(tuple_(Subscription.user_id, Subscription.group_id) \
         .in_(current_subscriptions_vk)).all()
+    
+    resubscribed_users_db = session.query() \
+        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
+        .filter(and_(tuple_(Subscription.user_id, Subscription.group_id) \
+        .in_(current_subscriptions_vk),
+        (Subscription.is_subscribed==False))).all()
+
+    deleted_subscriptions_db = session.query() \
+        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
+        .filter(tuple_(Subscription.user_id, Subscription.group_id) \
+        .notin_(current_subscriptions_vk)).all()
+    
+
+    subscription_event_mappings = [{
+        "user_id": sub[1], 
+        "group_id": sub[2],
+        "date": datetime.now(), 
+        "is_subscribed": True}
+        for sub in resubscribed_users_db] + \
+            [{
+        "user_id": sub[0], 
+        "group_id": sub[1], 
+        "date": datetime.now(),
+        "is_subscribed": True} 
+        for sub in current_subscriptions_vk
+        if sub not in existing_subscriptions_db] + \
+            [{
+        "user_id": sub[1], 
+        "group_id": sub[2], 
+        "date": datetime.now(),
+        "is_subscribed": False}
+        for sub in deleted_subscriptions_db]
+
+    session.bulk_insert_mappings(SubscriptionEvent, subscription_event_mappings)
+    session.commit()
+
     new_subscription_mappings = [{
         "user_id": sub[0], 
         "group_id": sub[1], 
@@ -149,11 +251,6 @@ def start_collector():
     session.bulk_insert_mappings(Subscription, new_subscription_mappings)
     session.commit()
 
-    resubscribed_users_db = session.query() \
-        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
-        .filter(and_(tuple_(Subscription.user_id, Subscription.group_id) \
-        .in_(current_subscriptions_vk),
-        (Subscription.is_subscribed==False))).all()
     resubscribed_user_mappings = [{
         "id": sub[0],
         "user_id": sub[1], 
@@ -163,10 +260,6 @@ def start_collector():
     session.bulk_update_mappings(Subscription, resubscribed_user_mappings)
     session.commit()
 
-    deleted_subscriptions_db = session.query() \
-        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
-        .filter(tuple_(Subscription.user_id, Subscription.group_id) \
-        .notin_(current_subscriptions_vk)).all()
     deleted_subscriber_mappings = [{
         "id": sub[0],
         "user_id": sub[1], 
@@ -176,21 +269,24 @@ def start_collector():
     session.bulk_update_mappings(Subscription, deleted_subscriber_mappings)
     session.commit()
 
-
+    
     print("Collecting likes:")
     likes = []
     for post in tqdm.tqdm(post_items):
         post_id = session.query(Post).filter(Post.vk_id==post["id"]).one_or_none().id
         for user_vk_id in post_like_usr_ids[post["id"]]:
-            user_id = session.query(User).filter(User.vk_id==user_vk_id).one_or_none().id
-            if not session.query(Like).filter(Like.user_id==user_id, Like.post_id==post_id).one_or_none():
-                likes.append(Like(post_id=post_id, user_id=user_id))
+            # user_id = session.query(User).filter(User.vk_id==user_vk_id).one_or_none().id
+            if not session.query(Like).filter(Like.user_id==user_vk_id, Like.post_id==post_id).one_or_none():
+                likes.append(Like(group_id=group_id, post_id=post_id, user_id=user_vk_id, date=datetime.now()))
 
     print("Inserting likes:")
     session.bulk_save_objects(likes)
     session.commit()
 
 
+    
 
+
+   
 
 

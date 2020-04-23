@@ -1,12 +1,8 @@
 from marshmallow_sqlalchemy import SQLAlchemySchema, auto_field, fields
 
 from app.models.Post import Post
-from app.models.Like import Like
 
 from app.schemas.Like import LikeSchema
-
-
-
 
 class PostSchema(SQLAlchemySchema):
     class Meta:

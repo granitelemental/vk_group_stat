@@ -1,7 +1,6 @@
 from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, JSON, ARRAY
+
 from app.models.db import BaseModel
-
-
 
 class User(BaseModel):
     __tablename__ = 'users'
