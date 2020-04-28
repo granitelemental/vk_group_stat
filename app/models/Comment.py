@@ -1,4 +1,4 @@
-from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, ForeignKey, JSON
+from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, ForeignKey, JSON, UniqueConstraint
 
 
 
@@ -13,4 +13,7 @@ class Comment(BaseModel):
     user_id = Column(Integer, ForeignKey("users.vk_id"), nullable=False)   
     data = Column(JSON, nullable=False)
     date = Column(DateTime, nullable=False)
+
+    __table_args__ = (UniqueConstraint('group_id', "post_id", 'user_id', "date", name='_post_user_group_date_uc'),
+                    )
 

@@ -8,6 +8,7 @@ import numpy as np
 
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import and_, tuple_, func
+from sqlalchemy.dialects import postgresql
 
 from app.models.db import session, engine
 from app.models.User import User
@@ -24,7 +25,6 @@ from app.utils.log import init_logger
 from app.utils.db import upsert
 from app.utils.collector import get_all
 
-from app.collector.functions import collect_post_entities
 
 app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d8a3f" # TODO в конфиг
 comunity_token = "1d05d5656b70b874e93a44b5821a378e12c48f7f249d5cdf10f81e0ca970394f144209f39480ccb02cc09" # TODO в кофиг
@@ -37,14 +37,37 @@ BaseModel.metadata.create_all(engine)
 def local_date_from_timestamp(ts):
     return datetime.utcfromtimestamp(ts) + timedelta(hours=3)
 
-log = init_logger('collector', 'debug')
+log = init_logger('collector', 'DEBUG')
 
-log.error('dsds')
 
-def collect_subcriptions(group_id, comunity_token):
+def create_user_object(user):
+    """user - user item obtained from vk_api; 
+    obj - object of class User"""
+    obj = {key: user[key] if key in user.keys() else None for key in User.vk_fields}
+    obj["vk_id"] = user["id"]
+    try:
+        obj["bdate"] = datetime.strptime(obj["bdate"], "%d.%m.%Y") if (len(obj["bdate"].split(".")) == 3) else None
+    except:
+        obj["bdate"] = None
+    obj["city"] = [obj["city"]["title"] if obj["city"] else None][0]
+    obj["country"] = [obj["country"]["title"] if obj["country"] else None][0]
+    obj["schools"] = [school["name"] for school in obj["schools"]] if obj["schools"] else None
+    return obj
+
+def bulk_upsert(items, model, index_elements):
+    keys = items[0].keys()
+    insert_stmt = postgresql.insert(model.__table__).values(items)
+    update_stmt = insert_stmt.on_conflict_do_update(
+    index_elements=index_elements,
+    set_={key: getattr(insert_stmt.excluded, key) for key in keys}
+    )
+    engine.execute(update_stmt)
+    return None
+
+
+def get_subcribers(group_id, comunity_token):
     vk_session = vk.Session(access_token=comunity_token)
     vk_api = vk.API(vk_session, v = 5.8)
-
     def get_members(offset, count):
         res = vk_api.groups.getMembers(
             offset=offset,
@@ -52,47 +75,83 @@ def collect_subcriptions(group_id, comunity_token):
             group_id=group_id,
             fields=User.vk_fields
         )
-        return res["users"]
-
+        return res["users"], res["count"]
     subscribers = get_all(get_members, 200)
+    subscribers = [create_user_object(sub) for sub in subscribers]
     return subscribers
 
-def create_user_objects(users):
-    """users - user items obtained from vk_api; 
-    user_objects - objects of class User"""
-    user_objects = []
-    for user in tqdm.tqdm(users):
-        kwargs = {key: user[key] if key in user.keys() else None for key in User.vk_fields}
-        kwargs["vk_id"] = user["id"]
-        if (kwargs["bdate"] != None) and (len(kwargs["bdate"].split(".")) == 3):
-            kwargs["bdate"] = datetime.strptime(kwargs["bdate"], "%d.%m.%Y")
-        else:
-            kwargs["bdate"] = None
-        kwargs["city"] = [kwargs["city"]["title"] if kwargs["city"] else None][0]
-        kwargs["country"] = [kwargs["country"]["title"] if kwargs["country"] else None][0]
-        if kwargs["schools"]:
-            kwargs["schools"] = [school["name"] for school in kwargs["schools"]]
-        user_objects.append(User(**kwargs))
-    return user_objects
+def get_users_by_ids(user_ids):
+    users = []
+    open_users = vk_api.users.get(user_ids = user_ids, fields = User.vk_fields)
+    open_user_ids = [user["id"] for user in open_users]
+    closed_user_ids = [user_id for user_id in user_ids if user_id not in open_user_ids]
+    closed_users = [{"id": user_id} for user_id in closed_user_ids]
+    users.extend(open_users + closed_users)
+    users = [create_user_object(user) for user in users]
+    return users
 
-def pick_keys(d, *keys):
-    try:
-        return tuple([d[key] for key in keys])
-    except:
-        print(f"Invalid keys {keys} for dict {d}")
 
-def get_posts(group_id):
-    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=100)
-    return = posts['items']
+def get_posts(group_id, count):
+    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=count)
+    posts = [{
+            "group_id": group_id, 
+            "data": post, 
+            "vk_id": post["id"], 
+            "date": local_date_from_timestamp(post['date']),
+            "comments_count": post["comments"]["count"],
+            "reposts_count": post["reposts"]["count"]
+             } for post in posts["items"]]
+    return posts
+
 
 def get_likes(posts, group_id):
-    pass
+    all_post_likes = []
+    for post_vk_id in posts.keys():
+        def get_post_likes(offset, count): # posts.keys() - vk_ids, posts.values() - ids in db
+            res = vk_api.likes.getList(
+                offset=offset,
+                max_count=count,
+                type="post", 
+                item_id=post_vk_id, 
+                owner_id=-group_id,
+            )
+            return res["items"], res["count"]
+        post_db_id = posts[post_vk_id]
+        post_likes = [{"group_id": group_id,
+                        "post_id": post_db_id, 
+                        "user_id": user_id, 
+                        "date": datetime.now()} for user_id in get_all(get_post_likes, 200)]
+        all_post_likes.extend(post_likes)
+    return all_post_likes
+
 
 def get_comments(posts, group_id):
-    pass
+    all_post_comments = []
+    for post_vk_id in posts.keys():
+        def get_post_comments(offset, count):
+            res = vk_api.wall.getComments(
+                offset=offset,
+                max_count=count,
+                owner_id=-group_id, 
+                post_id=post_vk_id
+            )
+            return res["items"], res["count"]
+        post_comments = get_all(get_post_comments, 200)
+        post_db_id = posts[post_vk_id]
+        post_comments = [{"group_id": group_id, 
+                        "post_id": post_db_id,  
+                        "user_id": comment["from_id"],
+                        "data": comment["text"], 
+                        "date": local_date_from_timestamp(comment['date'])} for comment in post_comments]
+        all_post_comments.extend(post_comments)
+    return all_post_comments
+
 
 def compute_user_ids(likes, comments):
-    pass
+    user_ids = [like["user_id"] for like in likes] + [comment["user_id"] for comment in comments]
+    user_ids = list(set((user_ids)))
+    return user_ids
+    
 
 def start_collector():
     group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id')
@@ -101,98 +160,45 @@ def start_collector():
     upsert(Group, Group.vk_id==group_id, vk_id=group_id)
 
     log.debug("Getting posts info and upserting posts:")
-
-    posts = get_posts(group_id)
-
-    all_likes = get_likes(group_id, posts)
-    all_comments = get_comments(group_id, posts)
-
-    all_users_ids = compute_user_ids(all_likes, all_comments)
-   
-    for post in tqdm.tqdm(posts):
-        def get_likes(offset, count):
-            res = vk_api.likes.getList(
-                max_count=count,
-                type="post", 
-                item_id=post["id"], 
-                owner_id=post["owner_id"]
-            )
-            return res["items"]
-
-        def get_comments(offset, count):
-            res = vk_api.wall.getComments(
-                max_count=count,
-                owner_id=-group_id, 
-                post_id=post["id"]
-            )
-
-            return res["items"]
-
-        post_likes = get_all(get_likes, 200)
-        post_comments = get_all(get_comments, 200)
-
-        localdate = local_date_from_timestamp(post['date'])
-
-        upsert(Post, Post.vk_id == post['id'],
-            group_id = group_id, 
-            data = post, 
-            vk_id = post["id"], 
-            date = localdate,
-            comments_count = post["comments"]["count"],
-            reposts_count = post["reposts"]["count"])
-
-
-
-    query = session.query(Comment)
-
-    keys = "group_id", "post_id", "user_id", "date"#, "data"
-
-    current_post_comments = [pick_keys(comment, *keys) for comment in post_comments]
-    print("----->")
-    # print(current_post_comments)
-    existing_post_comments = session.query() \
-        .with_entities(Comment.group_id, Comment.post_id, Comment.user_id, Comment.date) \
-        .filter(tuple_(Comment.group_id, Comment.post_id, Comment.user_id, Comment.date) \
-        .in_([pick_keys(comment, *keys) for comment in post_comments])).all()
-
-    print(existing_post_comments)
-    print(len(existing_post_comments))
-
-    current_post_comments = [comment for comment in post_comments \
-        if pick_keys(comment, *keys) not in existing_post_comments]
-    # print("----->")
-    # print(current_post_comments[0].values())
-    keys = "group_id", "post_id", "user_id", "date", "data"
-    current_post_comment_mappings = [dict(zip(keys, comment.values())) for comment in current_post_comments]
-    # print("-------mappings")
-    # print(current_post_comment_mappings)
-    session.bulk_insert_mappings(Comment, current_post_comment_mappings)
-    session.commit()
-
-
-
-
-    # print("Updating comments")
     
-    # query = session.query(User)
-    # existing_user_ids = query.filter(User.vk_id.in_(post_like_usr_ids["all_usr_ids"])).all()
-    # existing_user_ids = [user.vk_id for user in existing_user_ids]
-    # post_like_usr_ids["all_usr_ids"] = [id for id in  post_like_usr_ids["all_usr_ids"] if id not in existing_user_ids ]
+    posts = get_posts(group_id, count=100)
+    bulk_upsert(posts, Post, ["vk_id", "group_id"])
 
-    print("Getting users info:")
-    users = []
-    for start in tqdm.tqdm(range(0,len(post_like_usr_ids["all_usr_ids"]),1000)):
-        user_ids = post_like_usr_ids["all_usr_ids"][start:start+1000]
-        open_users = vk_api.users.get(user_ids = user_ids, fields = User.vk_fields)
-        open_user_ids = [user["id"] for user in open_users]
-        closed_user_ids = [user_id for user_id in user_ids if user_id not in open_user_ids]
-        closed_users = [{"id": user_id} for user_id in closed_user_ids]
-        users.extend(open_users + closed_users)
+    posts = session.query(Post).with_entities(Post.vk_id, Post.id).filter(
+        Post.vk_id.in_([p["vk_id"] for p in posts]),
+        Post.group_id == group_id
+    ).all()
+    posts = dict(posts)
 
-    print("Adding users:") 
-    user_objects = create_user_objects(users)
-    session.bulk_save_objects(user_objects)
-    session.commit()
+    all_likes = get_likes(group_id=group_id, posts=posts)
+    all_comments = get_comments(group_id=group_id, posts=posts)
+    all_users_ids = compute_user_ids(all_likes, all_comments)
+    
+    current_subcribers = get_subcribers(group_id, comunity_token)  # потом разобраться c субскрибшенами
+    users = get_users_by_ids(all_users_ids)
+    users = users + [sub for sub in current_subcribers if sub not in users]
+
+
+    bulk_upsert(users, User, ["vk_id"])
+    bulk_upsert(all_likes, Like, ["post_id", "user_id"])
+    bulk_upsert(all_comments, Comment, ["group_id", "post_id", "user_id", "date"])
+
+    
+
+
+
+
+
+
+
+
+
+    
+
+
+
+
+    
 
     print("Collecting subscriptions")
     subscribers = collect_subcriptions(group_id, comunity_token)
@@ -292,6 +298,5 @@ def start_collector():
     
 
 
-   
 
 
