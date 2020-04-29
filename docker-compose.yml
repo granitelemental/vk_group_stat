@@ -20,3 +20,13 @@ services:
             - POSTGRES_DB=test
             - POSTGRES_HOST=db
         depends_on: ['db']
+
+    frontend:
+        build:
+            context: ./frontend/
+            dockerfile: ./Dockerfile.frontend.dev
+        environment:
+            - REACT_APP_ENVIRONMENT=development
+            - CI=true
+        ports:
+            - 3000:3000

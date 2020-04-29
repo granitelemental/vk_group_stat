@@ -1,0 +1,19 @@
+@import 'index.scss';
+
+.App {
+    
+}
+
+.Header {
+    width: 100%;
+    padding: 16px 8px;
+    background-color: $accent-background;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.Icon {
+    width: 20px;
+    height: 20px;
+}
