@@ -1,30 +1,27 @@
+import json
 from datetime import datetime, timedelta
 
-import vk
-import json
-import tqdm
-import requests
 import numpy as np
-
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import and_, tuple_, func
+import requests
+import tqdm
+import vk
+from sqlalchemy import and_, func, tuple_, cast, DATE
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.ext.declarative import declarative_base
 
-from app.models.db import session, engine
-from app.models.User import User
-from app.models.Post import Post
-from app.models.Like import Like
-from app.models.Group import Group
 from app.models.Comment import Comment
+from app.models.db import \
+    BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
+from app.models.db import engine, session
+from app.models.Group import Group
+from app.models.Like import Like
+from app.models.Post import Post
 from app.models.Subscription import Subscription
 from app.models.SubscriptionEvent import SubscriptionEvent
-
-from app.models.db import BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
-
-from app.utils.log import init_logger
-from app.utils.db import upsert
+from app.models.User import User
 from app.utils.collector import get_all
-
+from app.utils.db import upsert
+from app.utils.log import init_logger
 
 app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d8a3f" # TODO в конфиг
 comunity_token = "1d05d5656b70b874e93a44b5821a378e12c48f7f249d5cdf10f81e0ca970394f144209f39480ccb02cc09" # TODO в кофиг
@@ -52,22 +49,25 @@ def create_user_object(user):
     obj["city"] = [obj["city"]["title"] if obj["city"] else None][0]
     obj["country"] = [obj["country"]["title"] if obj["country"] else None][0]
     obj["schools"] = [school["name"] for school in obj["schools"]] if obj["schools"] else None
+    obj["is_subscribed"] = False
     return obj
 
-def bulk_upsert(items, model, index_elements):
+def bulk_upsert_or_insert(items, model, index_elements, update=False):
     keys = items[0].keys()
     insert_stmt = postgresql.insert(model.__table__).values(items)
     update_stmt = insert_stmt.on_conflict_do_update(
-    index_elements=index_elements,
+    index_elements = index_elements,
     set_={key: getattr(insert_stmt.excluded, key) for key in keys}
     )
-    engine.execute(update_stmt)
+    do_nothing_stmt = insert_stmt.on_conflict_do_nothing(
+    index_elements = index_elements
+    )
+    stmt = update_stmt if update else do_nothing_stmt
+    engine.execute(stmt)
     return None
 
 
-def get_subcribers(group_id, comunity_token):
-    vk_session = vk.Session(access_token=comunity_token)
-    vk_api = vk.API(vk_session, v = 5.8)
+def get_subscribers(group_id, comunity_token):
     def get_members(offset, count):
         res = vk_api.groups.getMembers(
             offset=offset,
@@ -78,6 +78,7 @@ def get_subcribers(group_id, comunity_token):
         return res["users"], res["count"]
     subscribers = get_all(get_members, 200)
     subscribers = [create_user_object(sub) for sub in subscribers]
+    subscribers = list(map(lambda x: {**x, "is_subscribed": True}, subscribers))
     return subscribers
 
 def get_users_by_ids(user_ids):
@@ -99,47 +100,47 @@ def get_posts(group_id, count):
             "vk_id": post["id"], 
             "date": local_date_from_timestamp(post['date']),
             "comments_count": post["comments"]["count"],
-            "reposts_count": post["reposts"]["count"]
+            "reposts_count": post["reposts"]["count"],
+            "likes_count": post["likes"]["count"]
              } for post in posts["items"]]
     return posts
 
 
 def get_likes(posts, group_id):
     all_post_likes = []
-    for post_vk_id in posts.keys():
+    for post in posts:
         def get_post_likes(offset, count): # posts.keys() - vk_ids, posts.values() - ids in db
             res = vk_api.likes.getList(
                 offset=offset,
                 max_count=count,
                 type="post", 
-                item_id=post_vk_id, 
+                item_id=post["vk_id"], 
                 owner_id=-group_id,
             )
             return res["items"], res["count"]
-        post_db_id = posts[post_vk_id]
         post_likes = [{"group_id": group_id,
-                        "post_id": post_db_id, 
+                        "post_id": post["id"], 
                         "user_id": user_id, 
-                        "date": datetime.now()} for user_id in get_all(get_post_likes, 200)]
+                        "date": local_date_from_timestamp(datetime.now().timestamp())} 
+                        for user_id in get_all(get_post_likes, 200)]
         all_post_likes.extend(post_likes)
     return all_post_likes
 
 
 def get_comments(posts, group_id):
     all_post_comments = []
-    for post_vk_id in posts.keys():
+    for post in posts:
         def get_post_comments(offset, count):
             res = vk_api.wall.getComments(
                 offset=offset,
                 max_count=count,
                 owner_id=-group_id, 
-                post_id=post_vk_id
+                post_id=post["vk_id"]
             )
             return res["items"], res["count"]
         post_comments = get_all(get_post_comments, 200)
-        post_db_id = posts[post_vk_id]
         post_comments = [{"group_id": group_id, 
-                        "post_id": post_db_id,  
+                        "post_id": post["id"],  
                         "user_id": comment["from_id"],
                         "data": comment["text"], 
                         "date": local_date_from_timestamp(comment['date'])} for comment in post_comments]
@@ -151,6 +152,26 @@ def compute_user_ids(likes, comments):
     user_ids = [like["user_id"] for like in likes] + [comment["user_id"] for comment in comments]
     user_ids = list(set((user_ids)))
     return user_ids
+
+def get_subscription_events(users, group_id):
+    events = []
+    for user in users:
+        events.append({
+            "group_id": group_id,
+            "user_id": user["vk_id"],
+            "date": local_date_from_timestamp(datetime.now().timestamp()),
+            "is_subscribed": user["is_subscribed"]
+        })
+    return events
+
+def get_diff_by(items_are_in, items_not_in, by = None):
+    """by - str; items_are_in and items_not_in - lists of dicts. diff - list of dicts"""
+    if by == None:
+        diff = [item for item in items_are_in if item not in items_not_in]
+    else:
+        by_not_in = [item[by] for item in items_not_in]
+        diff = [item for item in items_are_in if item[by] not in by_not_in]
+    return diff
     
 
 def start_collector():
@@ -159,143 +180,38 @@ def start_collector():
     log.debug("Updating groups")
     upsert(Group, Group.vk_id==group_id, vk_id=group_id)
 
-    log.debug("Getting posts info and upserting posts:")
+    log.debug("Updating posts")
     
     posts = get_posts(group_id, count=100)
-    bulk_upsert(posts, Post, ["vk_id", "group_id"])
-
-    posts = session.query(Post).with_entities(Post.vk_id, Post.id).filter(
-        Post.vk_id.in_([p["vk_id"] for p in posts]),
-        Post.group_id == group_id
-    ).all()
-    posts = dict(posts)
-
+    bulk_upsert_or_insert(posts, Post, ["vk_id", "group_id"], update=True)
+    posts = Post.get_all(filter = and_( Post.vk_id.in_([p["vk_id"] for p in posts]), 
+                                        Post.group_id == group_id))
+    
+    log.debug("Getting likes, comments, users")
     all_likes = get_likes(group_id=group_id, posts=posts)
+
     all_comments = get_comments(group_id=group_id, posts=posts)
-    all_users_ids = compute_user_ids(all_likes, all_comments)
-    
-    current_subcribers = get_subcribers(group_id, comunity_token)  # потом разобраться c субскрибшенами
-    users = get_users_by_ids(all_users_ids)
-    users = users + [sub for sub in current_subcribers if sub not in users]
 
+    commented_liked_user_ids = compute_user_ids(all_likes, all_comments)
 
-    bulk_upsert(users, User, ["vk_id"])
-    bulk_upsert(all_likes, Like, ["post_id", "user_id"])
-    bulk_upsert(all_comments, Comment, ["group_id", "post_id", "user_id", "date"])
+    subscribers_vk = get_subscribers(group_id, comunity_token) 
 
-    
-
-
-
-
-
-
-
-
-
+    commented_liked_users = get_diff_by(items_are_in = get_users_by_ids(commented_liked_user_ids), 
+                                        items_not_in = subscribers_vk, 
+                                        by = "vk_id")
+    log.debug("Updating users")
+    bulk_upsert_or_insert(commented_liked_users + subscribers_vk, User, ["vk_id"])
+    log.debug("Updating likes")
+    bulk_upsert_or_insert(all_likes, Like, ["post_id", "user_id"])
+    log.debug("Updating comments")
+    bulk_upsert_or_insert(all_comments, Comment, ["group_id", "post_id", "user_id", "date"])
     
 
 
+   
 
 
-    
 
-    print("Collecting subscriptions")
-    subscribers = collect_subcriptions(group_id, comunity_token)
-
-    print("Adding users with subscribers")
-    query = session.query(User)
-    existing_user_ids = [item.vk_id for item in query.filter(User.vk_id.in_([sub["id"] for sub in subscribers])).all()]
-
-    user_objects = create_user_objects([sub for sub in subscribers if sub["id"] not in existing_user_ids])
-    session.bulk_save_objects(user_objects)
-    session.commit()
-
-    print("Adding subscriptions")
-    current_subscriptions_vk = [(sub["id"], group_id) for sub in subscribers]
-    existing_subscriptions_db = session.query() \
-        .with_entities(Subscription.user_id, Subscription.group_id) \
-        .filter(tuple_(Subscription.user_id, Subscription.group_id) \
-        .in_(current_subscriptions_vk)).all()
-    
-    resubscribed_users_db = session.query() \
-        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
-        .filter(and_(tuple_(Subscription.user_id, Subscription.group_id) \
-        .in_(current_subscriptions_vk),
-        (Subscription.is_subscribed==False))).all()
-
-    deleted_subscriptions_db = session.query() \
-        .with_entities(Subscription.id, Subscription.user_id, Subscription.group_id) \
-        .filter(tuple_(Subscription.user_id, Subscription.group_id) \
-        .notin_(current_subscriptions_vk)).all()
-    
-
-    subscription_event_mappings = [{
-        "user_id": sub[1], 
-        "group_id": sub[2],
-        "date": datetime.now(), 
-        "is_subscribed": True}
-        for sub in resubscribed_users_db] + \
-            [{
-        "user_id": sub[0], 
-        "group_id": sub[1], 
-        "date": datetime.now(),
-        "is_subscribed": True} 
-        for sub in current_subscriptions_vk
-        if sub not in existing_subscriptions_db] + \
-            [{
-        "user_id": sub[1], 
-        "group_id": sub[2], 
-        "date": datetime.now(),
-        "is_subscribed": False}
-        for sub in deleted_subscriptions_db]
-
-    session.bulk_insert_mappings(SubscriptionEvent, subscription_event_mappings)
-    session.commit()
-
-    new_subscription_mappings = [{
-        "user_id": sub[0], 
-        "group_id": sub[1], 
-        "is_subscribed": True} 
-        for sub in current_subscriptions_vk
-        if sub not in existing_subscriptions_db]
-    session.bulk_insert_mappings(Subscription, new_subscription_mappings)
-    session.commit()
-
-    resubscribed_user_mappings = [{
-        "id": sub[0],
-        "user_id": sub[1], 
-        "group_id": sub[2], 
-        "is_subscribed": True}
-        for sub in resubscribed_users_db]
-    session.bulk_update_mappings(Subscription, resubscribed_user_mappings)
-    session.commit()
-
-    deleted_subscriber_mappings = [{
-        "id": sub[0],
-        "user_id": sub[1], 
-        "group_id": sub[2], 
-        "is_subscribed": False}
-        for sub in deleted_subscriptions_db]
-    session.bulk_update_mappings(Subscription, deleted_subscriber_mappings)
-    session.commit()
-
-    
-    print("Collecting likes:")
-    likes = []
-    for post in tqdm.tqdm(post_items):
-        post_id = session.query(Post).filter(Post.vk_id==post["id"]).one_or_none().id
-        for user_vk_id in post_like_usr_ids[post["id"]]:
-            # user_id = session.query(User).filter(User.vk_id==user_vk_id).one_or_none().id
-            if not session.query(Like).filter(Like.user_id==user_vk_id, Like.post_id==post_id).one_or_none():
-                likes.append(Like(group_id=group_id, post_id=post_id, user_id=user_vk_id, date=datetime.now()))
-
-    print("Inserting likes:")
-    session.bulk_save_objects(likes)
-    session.commit()
-
-
-    
 
 
 

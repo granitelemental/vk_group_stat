@@ -2,9 +2,9 @@ from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, Forei
 
 
 
-from app.models.db import BaseModel
+from app.models.db import BaseModel, BaseMixin
 
-class Comment(BaseModel):
+class Comment(BaseModel, BaseMixin):
     __tablename__ = 'comments'
 
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)

@@ -12,4 +12,11 @@ class PostSchema(SQLAlchemySchema):
 
     id = auto_field()
     vk_id = auto_field()
+    group_id = auto_field()
+    date = auto_field()
+    data = auto_field()
+    comments_count = auto_field()
+    reposts_count = auto_field()
+    likes_count = auto_field()
+
     likes = fields.Nested(LikeSchema, many=True)

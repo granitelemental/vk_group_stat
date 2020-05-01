@@ -2,7 +2,7 @@ from datetime import date, datetime, timedelta
 import io
 
 from sqlalchemy.orm import joinedload
-from sqlalchemy import tuple_, func
+from sqlalchemy import tuple_, func, cast, DATE
 from flask import Flask, jsonify, request, Response
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import matplotlib.pyplot as plt
@@ -55,6 +55,38 @@ def v1_posts():
     schema = PostSchema()
     posts = schema.dump(posts, many=True)
     return jsonify(posts)
+
+
+@app.route("/api/v1.0/stats/posts/top")
+def get_top_posts(): 
+    fields = ("id", "vk_id", "likes_count", "comments_count", "reposts_count")
+    weight_like, weight_comment, weight_repost = 0.2, 0.3, 0.5 
+    periods = {"1d": 1,
+               "1w": 7,
+               "1M": 30,
+               "1y": 365}
+    order_by = {"default": (weight_like * Post.likes_count + 
+                            weight_comment * Post.comments_count + 
+                            weight_repost * Post.reposts_count).desc(),
+                "likes": Post.likes_count.desc(),
+                "comments": Post.comments_count.desc(),
+                "reposts": Post.reposts_count.desc()}
+    
+    N = request.args.get('N', 10)
+    period = periods[request.args.get('period', "1w")]
+    by = request.args.get('by', "default")
+
+    if period == None:
+        posts = session.query(Post).order_by(order_by[by])
+    else:
+        filter = cast(Post.date, DATE) >=  datetime.now() + timedelta(hours=3) - timedelta(days=int(period))
+        posts = session.query(Post).filter(filter).order_by(order_by[by])
+
+    posts = posts.limit(N)  
+    schema = PostSchema(only = fields)
+    posts = schema.dump(posts, many = True)
+    return jsonify({'data': posts, 'ok': True})
+
 
 @app.route('/v1.0/users/distr')
 def v1_users():

@@ -1,8 +1,8 @@
 from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, Boolean, DateTime
-from app.models.db import BaseModel
+from app.models.db import BaseModel, BaseMixin
 from sqlalchemy.orm import relationship, backref
 
-class SubscriptionEvent(BaseModel):
+class SubscriptionEvent(BaseModel, BaseMixin):
     __tablename__ = 'subscription_events'
 
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
