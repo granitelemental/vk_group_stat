@@ -1,0 +1,12 @@
+.TopPosts {
+    background-color: #edeef0;
+    padding: 8px;
+
+    &__post {
+        border-radius: 4px;
+        box-shadow: 0 1px 0 0 #d7d8db, 0 0 0 1px #e3e4e8;
+        margin-top: 16px;
+        padding: 8px;
+        background: #fff;
+    }
+}

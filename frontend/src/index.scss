@@ -1,0 +1,15 @@
+// @import '../node_modules/bootstrap/dist/css/bootstrap-reboot.css';
+// @import '../node_modules/bootstrap/dist/css/bootstrap.css';
+
+$main-background: #f3c8e917;
+$accent-background: #3300ff36;
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: $main-background;
+}

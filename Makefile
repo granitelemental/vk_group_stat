@@ -3,7 +3,3 @@ run-collector:
 
 run-api:
 	python3 api.py
-
-
-
-
