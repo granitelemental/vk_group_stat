@@ -121,7 +121,7 @@ def get_likes(posts, group_id):
         post_likes = [{"group_id": group_id,
                         "post_id": post["id"], 
                         "user_id": user_id, 
-                        "date": local_date_from_timestamp(datetime.now().timestamp())} 
+                        "date": datetime.now()} 
                         for user_id in get_all(get_post_likes, 200)]
         all_post_likes.extend(post_likes)
     return all_post_likes
@@ -159,7 +159,7 @@ def get_subscription_events(users, group_id):
         events.append({
             "group_id": group_id,
             "user_id": user["vk_id"],
-            "date": local_date_from_timestamp(datetime.now().timestamp()),
+            "date": datetime.now(),
             "is_subscribed": user["is_subscribed"]
         })
     return events

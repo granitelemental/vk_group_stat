@@ -2,10 +2,17 @@ import React from 'react';
 
 import './style.scss'
 
-export default function ActivityCounter({likes, reposts, comments, views}) {
+export default function ActivityCounter({likesCount, repostsCount, commentsCount, viewsCount}) {
+    const fields = [
+        [likesCount, 'likes'],
+        [repostsCount, 'reposts'],
+        [commentsCount, 'comments'],
+        [viewsCount, 'views']
+    ];
+
     return (
         <div className="ActivityCounter">
-            {[[likes, 'likes'], [reposts, 'reposts'], [comments, 'comments'], [views, 'views']]
+            {fields
                 .map(([item, cls]) => {
                     if (!item) {return null}
                     return (

@@ -18,7 +18,6 @@ const callApi = (path, options) => {
     const url = getApiPath(path);
     // if (environment === 'test') return mock(url, options);
     return fetch(url, {
-        credentials: 'include',
         headers: options.headers ? options.headers : {'Content-type': 'application/json; charset=utf-8'},
         ...options,
     })
@@ -46,6 +45,9 @@ const callApi = (path, options) => {
                 default:
                     return res.json();
             }
+        })
+        .then(data => {
+            return keysToCamel(data);
         })
         .catch((data) => {
             if (data instanceof TypeError && data.message === 'Failed To Fetch') {

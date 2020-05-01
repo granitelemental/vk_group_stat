@@ -22,6 +22,9 @@ services:
         depends_on: ['db']
 
     frontend:
+        volumes: 
+            - "./frontend/src:/app/src"
+
         build:
             context: ./frontend/
             dockerfile: ./Dockerfile.frontend.dev

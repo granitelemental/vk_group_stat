@@ -4,6 +4,7 @@ import io
 from sqlalchemy.orm import joinedload
 from sqlalchemy import tuple_, func, cast, DATE
 from flask import Flask, jsonify, request, Response
+from flask_cors import CORS
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -42,6 +43,7 @@ def get_current_subscribers(Subscription):
     return query.all()
 
 app = Flask('API')
+CORS(app)
 
 @app.route("/")
 def ping():
@@ -59,7 +61,7 @@ def v1_posts():
 
 @app.route("/api/v1.0/stats/posts/top")
 def get_top_posts(): 
-    fields = ("id", "vk_id", "likes_count", "comments_count", "reposts_count")
+    fields = ("id", "vk_id", "likes_count", "comments_count", "reposts_count", "date")
     weight_like, weight_comment, weight_repost = 0.2, 0.3, 0.5 
     periods = {"1d": 1,
                "1w": 7,
@@ -72,14 +74,16 @@ def get_top_posts():
                 "comments": Post.comments_count.desc(),
                 "reposts": Post.reposts_count.desc()}
     
-    N = request.args.get('N', 10)
+    N = request.args.get('count', 10)
     period = periods[request.args.get('period', "1w")]
     by = request.args.get('by', "default")
 
     if period == None:
         posts = session.query(Post).order_by(order_by[by])
     else:
-        filter = cast(Post.date, DATE) >=  datetime.now() + timedelta(hours=3) - timedelta(days=int(period))
+        time_pass = datetime.now() - timedelta(days=int(period)) # TODO перевести все время вообще в UTC
+        print(time_pass)
+        filter = cast(Post.date, DATE) >= time_pass
         posts = session.query(Post).filter(filter).order_by(order_by[by])
 
     posts = posts.limit(N)  
