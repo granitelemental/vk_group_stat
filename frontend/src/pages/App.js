@@ -3,10 +3,11 @@ import GearIcon from 'bootstrap-icons/icons/gear-fill.svg';
 
 import {getTopPosts} from 'api/routes';
 
-import PostWidget from 'components/PostWidget';
+import TopPosts from 'widgets/TopPosts';
+import Distribution from 'widgets/Distribution';
+import Spacer from 'components/Spacer';
 
 import './App.scss';
-
 
 function App() {
     React.useEffect(() => {
@@ -21,7 +22,10 @@ function App() {
     return (
         <div className="App">
             <header className="Header">
-                <div className="label label-success">Group ID</div>
+                <div className="label label-success">
+                    <img className="Header__avatar" src="https://sun9-10.userapi.com/c858328/v858328357/1ae57a/XGfbzRdzPWk.jpg?ava=1" />
+                    Легущка
+                </div>
                 <div>
                     <img className="Icon" src={GearIcon} />
                 </div>
@@ -35,14 +39,36 @@ function App() {
                         </div>
                     </div>
                 </div>
+                <Spacer size={16} />
                 <div className="container container-fluid">
                     <div className="row">
                         <div className="col-md-6">
-                            <h2>Top posts</h2>
-                            <PostWidget wallId={'193519310_45'} />
+                            <TopPosts />
                         </div>
                         <div className="col-md-6">
                             <h2>Daily activity</h2>
+                            <ul class="list-group">
+                                <li class="list-group-item">Posts: <b>3</b></li>
+                                <li class="list-group-item">Likes: <b>13</b></li>
+                                <li class="list-group-item">Comments: <b>7</b></li>
+                                <li class="list-group-item">Reposts: <b>2</b></li>
+                                <li class="list-group-item">Subscriptions: <b>2</b></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div className="row">
+                        <div className="col-md-6">
+                            <Distribution />
+                        </div>
+                        <div className="col-md-6">
+                            <h2>Daily activity</h2>
+                            <ul className="list-group">
+                                <li className="list-group-item">Posts: <b>3</b></li>
+                                <li className="list-group-item">Likes: <b>13</b></li>
+                                <li className="list-group-item">Comments: <b>7</b></li>
+                                <li className="list-group-item">Reposts: <b>2</b></li>
+                                <li className="list-group-item">Subscriptions: <b>2</b></li>
+                            </ul>
                         </div>
                     </div>
                 </div>
