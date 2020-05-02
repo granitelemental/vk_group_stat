@@ -25,6 +25,8 @@
     "highcharts": "^8.0.4",
     "highcharts-react-official": "^3.0.0",
     "jquery": "^3.5.0",
+    "mobx-react-lite": "^2.0.6",
+    "mobx-state-tree": "^3.16.0",
     "react": "^16.13.1",
     "react-dom": "^16.13.1",
     "react-scripts": "3.4.1",

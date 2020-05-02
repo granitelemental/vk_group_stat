@@ -5,8 +5,6 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy import tuple_, func, cast, DATE
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
-import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 
