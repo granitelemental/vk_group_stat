@@ -1,3 +1,4 @@
 export default {
-    api: 'http://localhost:8080/',
+    dataApi: 'http://localhost:8080/',
+    jazzApi: 'http://localhost:8091/',
 };
