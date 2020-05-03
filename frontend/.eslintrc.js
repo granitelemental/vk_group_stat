@@ -3,6 +3,7 @@ module.exports = {
     rules: {
         'react/jsx-fragments': 'off',
         'react/jsx-props-no-spreading': 'off',
+        'react/prop-types': 'off',
     },
     "settings": {
         "import/resolver": {

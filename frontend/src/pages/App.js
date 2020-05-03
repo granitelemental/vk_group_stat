@@ -1,24 +1,14 @@
 import React from 'react';
 import GearIcon from 'bootstrap-icons/icons/gear-fill.svg';
 
-import {getTopPosts} from 'api/routes';
-
 import TopPosts from 'widgets/TopPosts';
+import Activity from 'widgets/Activity/index';
 import Distribution from 'widgets/Distribution';
 import Spacer from 'components/Spacer';
 
 import './App.scss';
 
 function App() {
-    React.useEffect(() => {
-        getTopPosts('1d').then(data => {
-
-        }).catch(err => {
-            
-        })
-        
-    }, []);
-
     return (
         <div className="App">
             <header className="Header">
@@ -46,16 +36,10 @@ function App() {
                             <TopPosts />
                         </div>
                         <div className="col-md-6">
-                            <h2>Daily activity</h2>
-                            <ul class="list-group">
-                                <li class="list-group-item">Posts: <b>3</b></li>
-                                <li class="list-group-item">Likes: <b>13</b></li>
-                                <li class="list-group-item">Comments: <b>7</b></li>
-                                <li class="list-group-item">Reposts: <b>2</b></li>
-                                <li class="list-group-item">Subscriptions: <b>2</b></li>
-                            </ul>
+                            <Activity />
                         </div>
                     </div>
+                    <Spacer size={16} />
                     <div className="row">
                         <div className="col-md-6">
                             <Distribution />

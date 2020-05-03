@@ -8,21 +8,20 @@ export default (Component, fetcher, mock = false) => {
 
         React.useEffect(() => {
             setIsLoading(true);
-            fetcher().then(data => {
-                debugger
-                
+            fetcher().then((data) => {
                 setData(data);
                 setIsLoading(false);
-            }).catch(err => {
-                debugger
-                mock ? setData(mock) : setError(err);
+            }).catch((err) => {
+                if (mock) {
+                    setData(mock);
+                } else {
+                    setError(err);
+                }
                 setIsLoading(false);
-
-            })
-            
+            });
         }, []);
 
 
-        return <Component {...props} isLoading={isLoading} data={data} error={error} />
-    }
-}
+        return <Component {...props} isLoading={isLoading} data={data} error={error} />;
+    };
+};
