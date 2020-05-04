@@ -2,12 +2,14 @@ from datetime import date, datetime, timedelta
 import io
 
 from sqlalchemy.orm import joinedload
-from sqlalchemy import tuple_, func, cast, DATE
+from sqlalchemy.sql.expression import between
+from sqlalchemy import tuple_, func, cast, DATE, String, extract, case
+from sqlalchemy.sql import select
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 import pandas as pd
 
-from app.models.db import session
+from app.models.db import session, engine
 from app.models.User import User
 from app.models.Post import Post
 from app.models.Like import Like
@@ -40,21 +42,42 @@ def get_current_subscribers(Subscription):
 app = Flask('API')
 CORS(app)
 
+from sqlalchemy.sql.functions import GenericFunction
+from sqlalchemy.types import DateTime
+
+class as_utc(GenericFunction):
+    type = DateTime
+    package = "time"
+
+
 @app.route("/")
 def ping():
     return jsonify({'ok': True})
 
 @app.route("/api/v1.0/stats/users/distribution")
 def get_distribution():
-    age_bins = {f"{i}-{i+4}": lambda x: x>=i and x<i+4 for i in range(0,90, 5)}
+    age_expr = case(
+            [
+                (between(extract("year", func.age(User.bdate)), ((i // 5) * 5) , ((i // 5 + 1) * 5 - 1)) ,
+                 f"{(i // 5) * 5}-{(i // 5 + 1) * 5 - 1}") # TODO check how between works (does it include borders)
+                for i in range(0,90)
+            ]
+        )
+    gender_expr = case(
+            [
+                (User.sex == '1' , "female"),
+                (User.sex == '2' , "male")  
+            ]
+        )
     by = request.args.get("property", "gender")
-    groupers = {"gender": User.sex,
-                "country": User.country
-                }
+    groupers = {"gender": gender_expr,
+                "country": User.country,
+                "age": age_expr}
     result = session.query(groupers[by], func.count(User.id)).group_by(groupers[by]).all()
-    result = dict(map(lambda x: x if x[0]!=None else ["not specified", x[1]],result))
+    result = dict(map(lambda x: x if x[0]!=None else ["not specified", x[1]], result))
+    total_count = {"total": session.query(func.count(User.id)).scalar()}
+    result.update(total_count)
     return jsonify({"data": result, "ok": True})
-
 
 
 @app.route("/api/v1.0/stats/events/activity")
@@ -110,3 +133,6 @@ def get_top_posts():
 
 def start_app():
     app.run(port=8080, debug=True)
+
+
+
