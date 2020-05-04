@@ -5,7 +5,7 @@ import WidgetHeader from 'components/WidgetHeader';
 
 import {connectToWidget} from 'tools/connect';
 
-// import './style.scss';
+import './style.scss';
 
 function Activity({isLoading, error, data}) {
     return (

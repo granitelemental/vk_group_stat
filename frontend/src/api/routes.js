@@ -15,13 +15,51 @@ export const getActivity = ({period}) => {
 
 
 export const auth = () => {
-    return jApi.get('/api/v0.0/auth');
+    return Promise.resolve({
+        id: '1',
+        token: 'token',
+    }) || jApi.get('/api/v0.0/auth');
 };
 
 export const getSettings = () => {
-    return jApi.get('/api/v0.0./settings');
+    return Promise.resolve({
+        vk: {
+            groupId: '193519310',
+            dashboards: [
+                'dashboard1',
+            ],
+        },
+    }) || jApi.get('/api/v0.0./settings');
 };
 
-export const getDashboard = () => {
-    return jApi.get('/api/v0.0./dashboard');
+export const getDashboard = (id) => {
+    return Promise.resolve({
+        id: 'dashboard1',
+        name: 'Test Dashboard',
+        description: 'Description of dashboard',
+        widgetSettings: {
+            topPosts: {
+                minHeight: 4,
+                minWidth: 4,
+                resizable: true,
+            },
+        },
+        widgets: [
+            {
+                type: 'topPosts',
+                settings: {
+                    period: '1w',
+                    count: 3,
+                    sortKey: 'default',
+                    updateEvery: '10m',
+                },
+                position: {
+                    x: 0,
+                    y: 0,
+                    h: 4,
+                    w: 4,
+                },
+            },
+        ],
+    }) || jApi.get('/api/v0.0./dashboard');
 };
