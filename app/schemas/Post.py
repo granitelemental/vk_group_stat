@@ -18,5 +18,6 @@ class PostSchema(SQLAlchemySchema):
     comments_count = auto_field()
     reposts_count = auto_field()
     likes_count = auto_field()
+    views_count = auto_field()
 
     likes = fields.Nested(LikeSchema, many=True)

@@ -27,7 +27,7 @@ app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d
 comunity_token = "1d05d5656b70b874e93a44b5821a378e12c48f7f249d5cdf10f81e0ca970394f144209f39480ccb02cc09" # TODO в кофиг
 
 vk_session = vk.Session(access_token=app_token)
-vk_api = vk.API(vk_session, v = 5.8)
+vk_api = vk.API(vk_session, v = 5.103)
 
 BaseModel.metadata.create_all(engine)
 
@@ -75,7 +75,8 @@ def get_subscribers(group_id, comunity_token):
             group_id=group_id,
             fields=User.vk_fields
         )
-        return res["users"], res["count"]
+        print("---->",res)
+        return res["items"], res["count"]
     subscribers = get_all(get_members, 200)
     subscribers = [create_user_object(sub) for sub in subscribers]
     subscribers = list(map(lambda x: {**x, "is_subscribed": True}, subscribers))
@@ -93,7 +94,7 @@ def get_users_by_ids(user_ids):
 
 
 def get_posts(group_id, count):
-    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=count)
+    posts = vk_api.wall.get(owner_id=-group_id, offset=0, count=count, fields=["views"])
     posts = [{
             "group_id": group_id, 
             "data": post, 
@@ -101,7 +102,8 @@ def get_posts(group_id, count):
             "date": local_date_from_timestamp(post['date']),
             "comments_count": post["comments"]["count"],
             "reposts_count": post["reposts"]["count"],
-            "likes_count": post["likes"]["count"]
+            "likes_count": post["likes"]["count"],
+            "views_count": post["views"]["count"]
              } for post in posts["items"]]
     return posts
 

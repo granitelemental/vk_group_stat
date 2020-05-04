@@ -15,6 +15,7 @@ class Post(BaseModel, BaseMixin):
     comments_count = Column(Integer, nullable=False)
     reposts_count = Column(Integer, nullable=False)
     likes_count = Column(Integer, nullable=False)
+    views_count = Column(Integer, nullable=False)
 
     __table_args__ = (UniqueConstraint('vk_id', 'group_id', name='postvk_group_uc'),
                      )
