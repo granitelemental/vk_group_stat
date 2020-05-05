@@ -1,13 +1,8 @@
-from datetime import date, datetime, timedelta
-import io
-
-from sqlalchemy.orm import joinedload
 from sqlalchemy.sql.expression import between
-from sqlalchemy import tuple_, func, cast, DATE, String, extract, case
-from sqlalchemy.sql import select
+from sqlalchemy import tuple_, func, cast, DATE, String, extract, case, and_
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
-import pandas as pd
+from datetime import datetime
 
 from app.models.db import session, engine
 from app.models.User import User
@@ -15,39 +10,38 @@ from app.models.Post import Post
 from app.models.Like import Like
 from app.models.Comment import Comment
 from app.models.SubscriptionEvent import SubscriptionEvent
+from app.models.Subscription import Subscription
+from app.models.Repost import Repost
 
 from app.schemas.User import UserSchema
 from app.schemas.Post import PostSchema
 from app.schemas.SubscriptionEvent import SubscriptionEventSchema
 
-from app.utils.db import filter_period
+from app.utils.db import filter_period, upsert
 
 
+def edit_group_join(json, is_subscribed):
+    item = {"user_id": json["object"]["user_id"], 
+            "group_id": json["group_id"],
+            "is_subscribed":  is_subscribed, 
+            "event_vk_id": json["event_id"]}
+    upsert(item, SubscriptionEvent, ["event_vk_id"])
+    item = {"user_id": item["user_id"],
+            "group_id": item["group_id"],
+            "is_subscribed": item["is_subscribed"]}
+    upsert(item, Subscription, ["user_id", "group_id"])
 
-def calculate_age(bdate):
-    if bdate:
-        bdate = pd.to_datetime(bdate)
-        today = date.today()
-        return today.year - bdate.year - ((today.month, today.day) < (bdate.month, bdate.day))
+def add_repost(json):
+    item = {"user_id": json["object"]["from_id"],
+            "post_id": Post.post_vk_to_db_id(json["object"]["copy_history"][0]["id"], json["group_id"]),
+            "group_id": json["group_id"],
+            "date": datetime.fromtimestamp(json["object"]["date"] - 3600*3), # TODO convert to UTC given that timestamp is local for each repost
+            "event_vk_id": json["event_id"]}
+    upsert(item, Repost, ["event_vk_id"])
 
-def get_current_subscribers(Subscription):
-    subquery = session.\
-        query(Subscription.user_id, func.max(Subscription.date)).\
-            group_by(Subscription.user_id).all()
-    query = session.\
-        query(Subscription.id, Subscription.user_id, Subscription.user_id, Subscription.date).\
-            filter(tuple_(Subscription.user_id, Subscription.date).in_(list(subquery)), Subscription.is_subscribed==True)
-    return query.all()
 
 app = Flask('API')
 CORS(app)
-
-from sqlalchemy.sql.functions import GenericFunction
-from sqlalchemy.types import DateTime
-
-class as_utc(GenericFunction):
-    type = DateTime
-    package = "time"
 
 
 @app.route("/")
@@ -78,6 +72,25 @@ def get_distribution():
     total_count = {"total": session.query(func.count(User.id)).scalar()}
     result.update(total_count)
     return jsonify({"data": result, "ok": True})
+
+
+@app.route('/vk', methods=["POST"])
+def add_vk_event():
+    json = request.get_json()
+
+    if json['type'] == 'group_join':
+        edit_group_join(json, is_subscribed = True)
+
+    if json['type'] == 'group_leave':
+        edit_group_join(json, is_subscribed = False)    
+
+    if json['type'] == 'wall_repost':
+        add_repost(json)
+
+    return "1"
+
+
+
 
 
 @app.route("/api/v1.0/stats/events/activity")

@@ -1,26 +1,24 @@
 import json
 from datetime import datetime, timedelta
 
-import numpy as np
-import requests
-import tqdm
 import vk
 from sqlalchemy import and_, func, tuple_, cast, DATE
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.declarative import declarative_base
 
 from app.models.Comment import Comment
-from app.models.db import \
-    BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
+from app.models.db import BaseModel  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
 from app.models.db import engine, session
+
 from app.models.Group import Group
 from app.models.Like import Like
 from app.models.Post import Post
+from app.models.Repost import Repost
 from app.models.Subscription import Subscription
 from app.models.SubscriptionEvent import SubscriptionEvent
 from app.models.User import User
+
 from app.utils.collector import get_all
-from app.utils.db import upsert
+from app.utils.db import upsert, bulk_upsert_or_insert
 from app.utils.log import init_logger
 
 app_token = "4c6d8d6e4c6d8d6e4c6d8d6e054c02301244c6d4c6d8d6e1224aadc8ad37bd1098d8a3f" # TODO в конфиг
@@ -52,20 +50,6 @@ def create_user_object(user):
     obj["is_subscribed"] = False
     return obj
 
-def bulk_upsert_or_insert(items, model, index_elements, update=False):
-    keys = items[0].keys()
-    insert_stmt = postgresql.insert(model.__table__).values(items)
-    update_stmt = insert_stmt.on_conflict_do_update(
-    index_elements = index_elements,
-    set_={key: getattr(insert_stmt.excluded, key) for key in keys}
-    )
-    do_nothing_stmt = insert_stmt.on_conflict_do_nothing(
-    index_elements = index_elements
-    )
-    stmt = update_stmt if update else do_nothing_stmt
-    engine.execute(stmt)
-    return None
-
 
 def get_subscribers(group_id, comunity_token):
     def get_members(offset, count):
@@ -75,7 +59,6 @@ def get_subscribers(group_id, comunity_token):
             group_id=group_id,
             fields=User.vk_fields
         )
-        print("---->",res)
         return res["items"], res["count"]
     subscribers = get_all(get_members, 200)
     subscribers = [create_user_object(sub) for sub in subscribers]
@@ -180,7 +163,7 @@ def start_collector():
     group_id = vk_api.utils.resolveScreenName(screen_name="public193519310").get('object_id')
     
     log.debug("Updating groups")
-    upsert(Group, Group.vk_id==group_id, vk_id=group_id)
+    upsert({"vk_id": group_id}, Group, ["vk_id"])
 
     log.debug("Updating posts")
     
@@ -193,11 +176,8 @@ def start_collector():
     all_likes = get_likes(group_id=group_id, posts=posts)
 
     all_comments = get_comments(group_id=group_id, posts=posts)
-
     commented_liked_user_ids = compute_user_ids(all_likes, all_comments)
-
     subscribers_vk = get_subscribers(group_id, comunity_token) 
-
     commented_liked_users = get_diff_by(items_are_in = get_users_by_ids(commented_liked_user_ids), 
                                         items_not_in = subscribers_vk, 
                                         by = "vk_id")
@@ -207,6 +187,10 @@ def start_collector():
     bulk_upsert_or_insert(all_likes, Like, ["post_id", "user_id"])
     log.debug("Updating comments")
     bulk_upsert_or_insert(all_comments, Comment, ["group_id", "post_id", "user_id", "date"])
+    log.debug("Updating subscribers")
+    subscribers_vk = [{"group_id": group_id, "user_id": item["vk_id"], "is_subscribed": True} for item in subscribers_vk]
+    bulk_upsert_or_insert(subscribers_vk, Subscription, ["group_id", "user_id"])
+
     
 
 

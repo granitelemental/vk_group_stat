@@ -1,14 +1,28 @@
-from app.models.db import session
 from sqlalchemy import cast, DATE
+from sqlalchemy.dialects import postgresql
 from datetime import datetime, timedelta
 
-def upsert(model, clause, **kwargs):
-    obj = session.query(model).filter(clause).one_or_none() # возвращает объект, если находит один айдишник в базе, 0 - если не находит ни одного
-    if obj:
-        session.query(model).filter(clause).update(kwargs)
-    else:             
-        session.add(model(**kwargs))
-    session.commit()
+from app.models.db import session, engine
+
+
+def bulk_upsert_or_insert(items, model, index_elements, update=False):
+    """items = list of dicts, model - db model, index_elements - list of fields to identify unique items in db, update - whether update is needed in case of item existance """
+    keys = items[0].keys()
+    insert_stmt = postgresql.insert(model.__table__).values(items)
+    update_stmt = insert_stmt.on_conflict_do_update(
+    index_elements = index_elements,
+    set_={key: getattr(insert_stmt.excluded, key) for key in keys}
+    )
+    do_nothing_stmt = insert_stmt.on_conflict_do_nothing(
+    index_elements = index_elements
+    )
+    stmt = update_stmt if update else do_nothing_stmt
+    engine.execute(stmt)
+    return None
+
+def upsert(item, model, index_elements):
+    bulk_upsert_or_insert(items = [item], model=model, index_elements=index_elements, update=True)
+
 
 def filter_period(model, period):
     periods = {"1d": 1,

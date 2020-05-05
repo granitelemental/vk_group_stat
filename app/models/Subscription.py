@@ -1,6 +1,9 @@
 from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, Boolean
 from app.models.db import BaseModel
 
+from app.models.Group import Group
+from app.models.User import User
+
 
 class Subscription(BaseModel):
     __tablename__ = 'subscriptions'
