@@ -19,7 +19,6 @@ class BaseMixin:
                 for item in items]
         return items
 
-
 POSTGRES_HOST=os.environ.get('POSTGRES_HOST', 'localhost')
 POSTGRES_USER=os.environ.get('POSTGRES_USER', 'test')
 POSTGRES_PASSWORD=os.environ.get('POSTGRES_PASSWORD', 'test')
