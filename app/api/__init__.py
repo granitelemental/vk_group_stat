@@ -20,6 +20,8 @@ from app.schemas.SubscriptionEvent import SubscriptionEventSchema
 from app.collector.functions import get_users_by_ids
 from app.utils.db import filter_period, upsert
 
+import app.config as config
+
 
 def edit_group_join(json, is_subscribed):
     item = {"user_id": json["object"]["user_id"], 
@@ -148,7 +150,7 @@ def get_top_posts():
 
 
 def start_app():
-    app.run(port=8080, debug=True)
+    app.run(host=config.host, port=config.port , debug=True)
 
 
 

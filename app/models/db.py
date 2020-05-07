@@ -19,14 +19,14 @@ class BaseMixin:
                 for item in items]
         return items
 
-POSTGRES_HOST=os.environ.get('POSTGRES_HOST', 'localhost')
-POSTGRES_USER=os.environ.get('POSTGRES_USER', 'test')
-POSTGRES_PASSWORD=os.environ.get('POSTGRES_PASSWORD', 'test')
-POSTGRES_DB=os.environ.get('POSTGRES_DB', 'test')
+POSTGRES_HOST = os.environ.get('POSTGRES_HOST', 'localhost')
+POSTGRES_USER = os.environ.get('POSTGRES_USER', 'test')
+POSTGRES_PASSWORD = os.environ.get('POSTGRES_PASSWORD', 'test')
+POSTGRES_DB = os.environ.get('POSTGRES_DB', 'test')
 
 engine = create_engine(f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:5432/{POSTGRES_DB}", echo = False)
 
-Session = sessionmaker(bind = engine)
+Session = sessionmaker(bind=engine)
 session = Session()
 
 engine.connect()
