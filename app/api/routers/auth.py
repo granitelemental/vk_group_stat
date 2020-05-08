@@ -5,6 +5,7 @@ import jwt
 
 from flask import Flask, redirect, jsonify, request
 
+from app.models.db import session
 from app.models.Account import Account
 from app.models.User import User
 
@@ -97,10 +98,51 @@ def sign_up_vk_callback():
 
 # Завершение регистрации
 def sign_up_complete():
-    pass
+    json = request.get_json()
+
+    password = json['password']
+    email = json['email']
+    token = json['token']
+
+    acc = Account.get_instance(Account.token == token)
+
+    if not acc:
+        raise Exception('Not found')
+    
+    print(json)
+    acc.set_password(password)
+    acc.email = email
+    session.commit()
+
+    return jsonify({
+        'ok': True,
+        'data': Account.get_by(Account.token == token),
+    })
+
+def auth():
+    json = request.get_json()
+
+    token = request.headers.get('Authorization')
+    
+    if token:
+        jwt_data = jwt.decode(token, 'secret', algorithms=['HS256'])
+
+
+        account = Account.get_by(Account.id == jwt_data['id'], except_fields=[Account.password_hash]),
+
+        if not account:
+            raise Exception('User not found')
+
+        return jsonify({
+            'ok': True,
+            'data': account,
+        })
+    else:
+        pass # проверка по логину паролю
 
 
 def Router(app):
+    app.route('/api/v1.0/auth', methods=['POST'])(auth)
     app.route('/api/v1.0/auth/vk/callback', methods=['GET'])(auth_vk_callback)
     app.route('/api/v1.0/signup/vk/callback', methods=['GET'])(sign_up_vk_callback)
-    app.route('/api/v1.0/signup/complete', methods=['GET'])(sign_up_complete)
+    app.route('/api/v1.0/signup/complete', methods=['POST'])(sign_up_complete)
