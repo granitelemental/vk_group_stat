@@ -20,6 +20,6 @@ session = Session()
 
 engine.connect()
 
-from app.models import *
+from app.models import Account, User, Group, Like, Comment, Repost, Subscription, SubscriptionEvent
 
 BaseModel.metadata.create_all(engine)

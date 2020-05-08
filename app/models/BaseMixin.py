@@ -17,6 +17,10 @@ class BaseMixin:
         return items
 
     @classmethod
+    def get(cls, clause):
+        return session.query(cls).filter(clause).one_or_none()
+
+    @classmethod
     def get_instance(cls, clause, except_fields=[], only_fields=None):
         columns = [c for c in cls.__table__.c if c not in except_fields and (True if only_fields is None else c in only_fields)]
         return session.query(*columns).filter(clause).one_or_none()
@@ -24,8 +28,11 @@ class BaseMixin:
     @classmethod
     def get_by(cls, *args, **kwargs):
         instance = cls.get_instance(*args, **kwargs)
-        print(instance)
-        return instance and map_instance_to_dict(instance)
+        if instance:
+            r = map_instance_to_dict(instance)
+            print('----', r)
+            print(type(r))
+            return r
 
     @classmethod
     def save(cls, data, keys):

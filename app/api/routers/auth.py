@@ -34,26 +34,36 @@ def auth_vk_callback():
     vk_user_id = data['user_id']
     access_token = data['access_token']
 
+    vk_session = vk.Session(access_token=access_token)
+    vk_api = vk.API(vk_session, v=vk_api_version)
+
     user = User.get_by(User.vk_id == vk_user_id)
 
     if not user:
-        # Сохранить пользователя из vk
-        pass
+        user = vk_api.users.get(user_ids=[vk_user_id], fields=User.vk_fields)
 
-    acc = Account.get_by(Account.vk_id == vk_user_id)
+        if (user[0]):
+            u = create_user_object(user[0])
+            User.save(u, ['vk_id'])
 
-    return jsonify({
-        'ok': True,
-        'data': {
-        }
-    })
+    acc = Account.get_by(Account.vk_id == vk_user_id, except_fields=[Account.password_hash])
+    print('acc', acc)
+    if not acc:
+        return jsonify({
+            'ok': False,
+            'error': {
+                'message': 'Пользователь не зарегистрирован'
+            }
+        })
+
+    token = acc['token']
+    return redirect(f'http://localhost:3000/auth/?token={token}')
 
 
 def sign_up_vk_callback():
     code =  request.args['code']
     data = get_access_token('http://localhost:8080/api/v1.0/signup/vk/callback', code)
 
-    print(data)
     vk_user_id = data['user_id']
     access_token = data['access_token']
     email = data.get('email') # TODO What if no email
@@ -62,8 +72,6 @@ def sign_up_vk_callback():
     vk_api = vk.API(vk_session, v=vk_api_version)
 
     user = vk_api.users.get(user_ids=[vk_user_id], fields=User.vk_fields)
-
-    print(user)
 
     if (user[0]):
         u = create_user_object(user[0])
@@ -90,8 +98,6 @@ def sign_up_vk_callback():
         'id': acc['id']
     }, 'secret', algorithm='HS256').decode('utf-8')
 
-    print({**acc, 'token': token})
-
     Account.save({**acc, 'token': token}, ['id'])
 
     return redirect(f'http://localhost:3000/signup/?token={token}&email={email}')
@@ -104,12 +110,13 @@ def sign_up_complete():
     email = json['email']
     token = json['token']
 
-    acc = Account.get_instance(Account.token == token)
+    acc = Account.get(Account.token == token)
+
+    print(acc)
 
     if not acc:
         raise Exception('Not found')
     
-    print(json)
     acc.set_password(password)
     acc.email = email
     session.commit()
@@ -120,15 +127,13 @@ def sign_up_complete():
     })
 
 def auth():
-    json = request.get_json()
-
     token = request.headers.get('Authorization')
-    
+    print(token)
     if token:
         jwt_data = jwt.decode(token, 'secret', algorithms=['HS256'])
 
 
-        account = Account.get_by(Account.id == jwt_data['id'], except_fields=[Account.password_hash]),
+        account = Account.get_by(Account.id == jwt_data['id'], except_fields=[Account.password_hash])
 
         if not account:
             raise Exception('User not found')
@@ -138,7 +143,19 @@ def auth():
             'data': account,
         })
     else:
-        pass # проверка по логину паролю
+        json = request.get_json()
+        
+        email = json['email']
+        password = json['password']
+
+        account = Account.get(Account.email == email)
+        account.check_password(password)
+
+        account = Account.get_by(Account.email == email, except_fields=[Account.password_hash])
+        return jsonify({
+            'ok': True,
+            'data': account,
+        })
 
 
 def Router(app):
