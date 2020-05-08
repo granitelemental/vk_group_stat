@@ -7,7 +7,7 @@ from sqlalchemy import and_, func, tuple_, cast, DATE
 from sqlalchemy.ext.declarative import declarative_base
 
 from app.models.Comment import Comment
-from app.models.db import BaseModel, engine, session  # BaseModel запоминает, что от нее наследовалось в User, Post и Like, при create_all создает все эти таблицы
+from app.models.db import session
 from app.models.Group import Group
 from app.models.Like import Like
 from app.models.Post import Post
@@ -22,8 +22,6 @@ from app.utils.db import upsert, bulk_upsert_or_insert
 from app.utils.log import init_logger
 from app.utils.collections import get_diff_by
 from app.config import comunity_token, screen_name
-
-BaseModel.metadata.create_all(engine)
 
 log = init_logger('collector', 'DEBUG')
 

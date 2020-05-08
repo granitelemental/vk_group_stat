@@ -22,6 +22,8 @@ from app.utils.db import filter_period, upsert
 
 import app.config as config
 
+from app.api.routers.auth import Router as AuthRouter
+
 
 def edit_group_join(json, is_subscribed):
     item = {"user_id": json["object"]["user_id"], 
@@ -52,6 +54,8 @@ def add_repost(json):
 
 app = Flask('API')
 CORS(app)
+
+AuthRouter(app)
 
 
 @app.route("/")

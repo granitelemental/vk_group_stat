@@ -1,8 +1,7 @@
 from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, ForeignKey, JSON, UniqueConstraint
 
-
-
-from app.models.db import BaseModel, BaseMixin
+from app.models.db import BaseModel
+from app.models.BaseMixin import BaseMixin
 
 class Comment(BaseModel, BaseMixin):
     __tablename__ = 'comments'

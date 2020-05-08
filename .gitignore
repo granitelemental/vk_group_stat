@@ -4,3 +4,4 @@ node_modules
 .ipynb_*
 .vscode
 *.ipynb
+.vscode/*
