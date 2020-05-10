@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, DateTime
 
-from app.models.db import BaseModel, session
+from app.models.db import BaseModel
 from app.models.BaseMixin import BaseMixin
 
 class Like(BaseModel, BaseMixin):

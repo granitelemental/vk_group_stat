@@ -6,8 +6,8 @@ import vk
 from sqlalchemy import and_, func, tuple_, cast, DATE
 from sqlalchemy.ext.declarative import declarative_base
 
-from app.models.Comment import Comment
 from app.models.db import session
+from app.models.Comment import Comment
 from app.models.Group import Group
 from app.models.Like import Like
 from app.models.Post import Post
@@ -24,8 +24,7 @@ from app.utils.collections import get_diff_by
 from app.config import comunity_token, screen_name
 
 log = init_logger('collector', 'DEBUG')
-
-                    
+  
 def collect_vk_data(N_posts = 100, initial = True):
      if initial:
           log.info("INITIAL COLLECTING")
@@ -39,6 +38,7 @@ def collect_vk_data(N_posts = 100, initial = True):
 
      log.debug("Updating posts")
      posts = get_posts(group_id, count = N_posts)
+     
      bulk_upsert_or_insert(posts, Post, ["vk_id", "group_id"], update=True)
      posts = Post.get_all(filter = and_(Post.vk_id.in_([p["vk_id"] for p in posts]), Post.group_id == group_id))
 
@@ -64,7 +64,6 @@ def collect_vk_data(N_posts = 100, initial = True):
      bulk_upsert_or_insert(all_likes, Like, ["post_id", "user_id"])
 
      log.debug("Updating comments")
-     print(all_comments)
      bulk_upsert_or_insert(all_comments, Comment, ["group_id", "post_id", "user_id", "date"])
 
      if initial:

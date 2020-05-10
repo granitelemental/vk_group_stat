@@ -2,7 +2,7 @@ from sqlalchemy.sql.expression import between
 from sqlalchemy import tuple_, func, cast, DATE, String, extract, case, and_
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from app.models.db import session, engine
 from app.models.User import User
@@ -61,6 +61,21 @@ AuthRouter(app)
 @app.route("/")
 def ping():
     return jsonify({'ok': True})
+
+# @app.route("/api/v1.0/events/timeline")
+# def get_timeline():
+#     """time_window: d | M | h | w | m , entities: 'posts,likes,comments,reposts' (string)"""
+#     start = request.args.get("from", datetime.utcnow() - timedelta(3600*24))
+#     end = request.args.get("to", datetime.utcnow())
+
+#     time_windows = "%Y-%m-%d %H:%M:%S"
+
+#     time_window = request.args.get("time_window", "h")
+#     entities = request.args.get("entities", "likes")
+#     if entities == "likes":
+#         grouper = func.strftime('%Y-%m', table.c.datestamp)
+#         likes = session.query(func.count(Like.id).over(order_by=Like.date, partition_by=partition_by))
+
 
 @app.route("/api/v1.0/stats/users/distribution")
 def get_distribution():

@@ -74,7 +74,7 @@ def get_posts(group_id, count):
             "comments_count": post.get("comments", {}).get("count", 0),
             "reposts_count": post.get("reposts", {}).get("count", 0),
             "likes_count": post.get("likes", {}).get("count", 0),
-            "views_count": post.get("view", {}).get('count', 0)
+            "views_count": post.get("views", {}).get('count', 0)
              } for post in posts.get("items", [])]
     return posts
 
