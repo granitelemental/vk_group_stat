@@ -7,3 +7,4 @@ vk==2.0.2
 colorlog==4.1.0
 numpy==1.18.3
 tqdm==4.45.0
+pyjwt==1.7.1

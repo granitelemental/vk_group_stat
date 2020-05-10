@@ -1,7 +1,8 @@
 from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, ForeignKey, JSON, UniqueConstraint, and_
 from sqlalchemy.orm import relationship
 
-from app.models.db import BaseModel, session, BaseMixin
+from app.models.db import BaseModel, session
+from app.models.BaseMixin import BaseMixin
 from app.models.Like import Like
 
 class Post(BaseModel, BaseMixin):

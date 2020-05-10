@@ -1,6 +1,7 @@
 from sqlalchemy import DateTime, Table, Column, Integer, String, MetaData, JSON, ARRAY, Boolean
 
-from app.models.db import BaseModel, BaseMixin
+from app.models.db import BaseModel
+from app.models.BaseMixin import BaseMixin
 
 class User(BaseModel, BaseMixin):
     __tablename__ = 'users'

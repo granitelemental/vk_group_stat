@@ -1,7 +1,8 @@
 from sqlalchemy import Column, Integer, ForeignKey, UniqueConstraint, Boolean, DateTime, String
 from datetime import datetime
 
-from app.models.db import BaseModel, BaseMixin
+from app.models.db import BaseModel
+from app.models.BaseMixin import BaseMixin
 from sqlalchemy.orm import relationship, backref
 
 from app.models.Group import Group

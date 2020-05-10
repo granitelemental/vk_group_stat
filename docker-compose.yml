@@ -34,15 +34,15 @@ services:
             - 8080:8080
         depends_on: ['db']
 
-    frontend:
-        volumes: 
-            - "./frontend/src:/app/src"
+    # frontend:
+    #     volumes: 
+    #         - "./frontend/src:/app/src"
 
-        build:
-            context: ./frontend/
-            dockerfile: ./Dockerfile.frontend.dev
-        environment:
-            - REACT_APP_ENVIRONMENT=development
-            - CI=true
-        ports:
-            - 3000:3000
+    #     build:
+    #         context: ./frontend/
+    #         dockerfile: ./Dockerfile.frontend.dev
+    #     environment:
+    #         - REACT_APP_ENVIRONMENT=development
+    #         - CI=true
+    #     ports:
+    #         - 3000:3000
