@@ -11,8 +11,9 @@ from app.models.User import User
 
 from app.collector.functions import create_user_object
 
+from app.api.utils import response
 from app.config import app_token, vk_api_version
-
+from app.api.errors import NotFoundError
 
 def get_access_token(redirect, code):
     if not code:
@@ -27,46 +28,64 @@ def get_access_token(redirect, code):
 
     return r.json()
 
-def auth_vk_callback():
-    code = request.args['code']
-    data = get_access_token('http://localhost:8080/api/v1.0/auth/vk/callback', code)
+@response
+def auth_vk():
+    json = request.get_json()
+    code = json['code']
+    redirect_uri = json['redirect_uri']
+    data = get_access_token(redirect_uri, code)
 
     vk_user_id = data['user_id']
-    access_token = data['access_token']
-
-    vk_session = vk.Session(access_token=access_token)
-    vk_api = vk.API(vk_session, v=vk_api_version)
-
-    user = User.get_by(User.vk_id == vk_user_id)
-
-    if not user:
-        user = vk_api.users.get(user_ids=[vk_user_id], fields=User.vk_fields)
-
-        if (user[0]):
-            u = create_user_object(user[0])
-            User.save(u, ['vk_id'])
 
     acc = Account.get_by(Account.vk_id == vk_user_id, except_fields=[Account.password_hash])
-    print('acc', acc)
+    
     if not acc:
-        return jsonify({
-            'ok': False,
-            'error': {
-                'message': 'Пользователь не зарегистрирован'
-            }
-        })
+        raise NotFoundError('Пользователь не найден')
 
-    token = acc['token']
-    return redirect(f'http://localhost:3000/auth/?token={token}')
+    token = jwt.encode({
+        'id': acc['id'],
+        'vk_id': vk_user_id,
+    }, 'secret', algorithm='HS256').decode('utf-8')
 
+    return {**acc, 'token': token}
 
-def sign_up_vk_callback():
-    code =  request.args['code']
-    data = get_access_token('http://localhost:8080/api/v1.0/signup/vk/callback', code)
+@response
+def sign_up_vk_check():
+    json = request.get_json()
+    code = json['code']
+
+    redirect_uri =  json['redirect_uri']
+    data = get_access_token(redirect_uri, code)
+    
+    if data.get('error'):
+        raise Exception(data['error_description'])
 
     vk_user_id = data['user_id']
-    access_token = data['access_token']
-    email = data.get('email') # TODO What if no email
+
+    acc = Account.get_by(Account.vk_id == vk_user_id)
+
+    if acc:
+        raise Exception('Пользователь уже зарегистрирован')
+
+    return {
+        'vk_id': vk_user_id,
+        'email': data['email'],
+        'access_token': data['access_token'],
+    }
+
+@response
+def sign_up_vk():
+    json = request.get_json()
+
+    access_token = json['access_token']
+    vk_user_id = json['vk_id']
+    email = json['email']
+    password = json['password']
+
+    acc = Account.get_by(Account.vk_id == vk_user_id)
+
+    if acc:
+        raise Exception('Пользователь уже зарегистрирован')
 
     vk_session = vk.Session(access_token=access_token)
     vk_api = vk.API(vk_session, v=vk_api_version)
@@ -77,71 +96,37 @@ def sign_up_vk_callback():
         u = create_user_object(user[0])
         User.save(u, ['vk_id'])
 
-    acc = Account.get_by(Account.vk_id == vk_user_id)
-
-    if acc:
-        return jsonify({
-            'ok': False,
-            'error': {
-                'message': 'Пользователь уже зарегистрирован'
-            }
-        })
-
     Account.save({
         'vk_id': vk_user_id,
         'email': email,
     }, ['id'])
 
-    acc = Account.get_by(Account.vk_id == vk_user_id)
+    acc = Account.get(Account.vk_id == vk_user_id)
 
     token = jwt.encode({
-        'id': acc['id']
+        'id': acc.id,
+        'vk_id': vk_user_id,
     }, 'secret', algorithm='HS256').decode('utf-8')
 
-    Account.save({**acc, 'token': token}, ['id'])
-
-    return redirect(f'http://localhost:3000/signup/?token={token}&email={email}')
-
-# Завершение регистрации
-def sign_up_complete():
-    json = request.get_json()
-
-    password = json['password']
-    email = json['email']
-    token = json['token']
-
-    acc = Account.get(Account.token == token)
-
-    print(acc)
-
-    if not acc:
-        raise Exception('Not found')
-    
     acc.set_password(password)
-    acc.email = email
     session.commit()
 
-    return jsonify({
-        'ok': True,
-        'data': Account.get_by(Account.token == token),
-    })
+    updated_acc = Account.get_by(Account.id == acc.id, except_fields=[Account.password_hash])    
+    return {**updated_acc, 'token': token}
 
+@response
 def auth():
     token = request.headers.get('Authorization')
-    print(token)
+
     if token:
         jwt_data = jwt.decode(token, 'secret', algorithms=['HS256'])
-
 
         account = Account.get_by(Account.id == jwt_data['id'], except_fields=[Account.password_hash])
 
         if not account:
-            raise Exception('User not found')
+            raise NotFoundError('User not found')
 
-        return jsonify({
-            'ok': True,
-            'data': account,
-        })
+        return {**account, 'token': token}
     else:
         json = request.get_json()
         
@@ -152,14 +137,17 @@ def auth():
         account.check_password(password)
 
         account = Account.get_by(Account.email == email, except_fields=[Account.password_hash])
-        return jsonify({
-            'ok': True,
-            'data': account,
-        })
+
+        token = jwt.encode({
+            'id': account['id'],
+            'vk_id': account['vk_id'],
+        }, 'secret', algorithm='HS256').decode('utf-8')
+        return {**account, 'token': token}
 
 
 def Router(app):
     app.route('/api/v1.0/auth', methods=['POST'])(auth)
-    app.route('/api/v1.0/auth/vk/callback', methods=['GET'])(auth_vk_callback)
-    app.route('/api/v1.0/signup/vk/callback', methods=['GET'])(sign_up_vk_callback)
-    app.route('/api/v1.0/signup/complete', methods=['POST'])(sign_up_complete)
+    app.route('/api/v1.0/auth/vk', methods=['POST'])(auth_vk)
+    
+    app.route('/api/v1.0/signup/vk/check', methods=['POST'])(sign_up_vk_check)
+    app.route('/api/v1.0/signup/vk', methods=['POST'])(sign_up_vk)

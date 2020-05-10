@@ -14,7 +14,6 @@ class Account(BaseModel, BaseMixin):
     password_hash = Column(String(128))
     email = Column(String(256))
 
-    token = Column(String(256))
     # Social Ids
     vk_id = Column(Integer, ForeignKey("users.vk_id"), nullable = False)
     vk_access_token = Column(String(256))
