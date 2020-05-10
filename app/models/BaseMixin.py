@@ -2,10 +2,12 @@ from app.utils.db import upsert
 from app.models.db import session
 
 def map_instance_to_dict(row):
-    return row._asdict()
-    # d = getattr(i, "__dict__")
-    # del d['_sa_instance_state']
-    # return d
+    if hasattr(row, "__dict__"):
+        d = getattr(row, "__dict__")
+        del d['_sa_instance_state']
+        return d
+    else:
+        return row._asdict()
 
 class BaseMixin:
     @classmethod 
@@ -30,8 +32,6 @@ class BaseMixin:
         instance = cls.get_instance(*args, **kwargs)
         if instance:
             r = map_instance_to_dict(instance)
-            print('----', r)
-            print(type(r))
             return r
 
     @classmethod
