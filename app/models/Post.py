@@ -10,7 +10,7 @@ class Post(BaseModel, BaseMixin):
 
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
     vk_id = Column(Integer, nullable = False)
-    group_id = Column(Integer, nullable = False) # TODO Add relation
+    group_id = Column(Integer, ForeignKey('groups.vk_id'),  nullable = False)
     date = Column(DateTime, nullable=False)
     data = Column(JSON)
     comments_count = Column(Integer, nullable=False)
