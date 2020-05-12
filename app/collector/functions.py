@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import vk
 
@@ -114,7 +114,7 @@ def get_likes(posts, group_id):
         post_likes = [{"group_id": group_id,
                         "post_id": post["id"], 
                         "user_id": user_id, 
-                        "date": datetime.now()} 
+                        "date": datetime.now(tz=timezone.utc)} 
                         for user_id in get_all(get_post_likes, 200)]
         all_post_likes.extend(post_likes)
     return all_post_likes

@@ -21,7 +21,7 @@ from app.collector.functions import get_all, get_posts, get_comments, get_likes,
 from app.utils.db import upsert, bulk_upsert_or_insert
 from app.utils.log import init_logger
 from app.utils.collections import get_diff_by
-from app.config import comunity_token, screen_name
+from app.config import comunity_token, screen_name, collector_period, init_posts_num, watch_posts_num
 
 log = init_logger('collector', 'DEBUG')
   
@@ -73,10 +73,10 @@ def collect_vk_data(N_posts = 100, initial = True):
 
      
 def start_collector():
-     collect_vk_data(N_posts = 100, initial = True)
+     collect_vk_data(N_posts = init_posts_num, initial = True)
      while True:
-          collect_vk_data(N_posts = 2, initial = False)
-          sleep(5)
+          collect_vk_data(N_posts = watch_posts_num, initial = False)
+          sleep(collector_period)
 
 
 

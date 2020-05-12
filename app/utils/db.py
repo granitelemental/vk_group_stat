@@ -1,6 +1,6 @@
 from sqlalchemy import cast, DATE
 from sqlalchemy.dialects import postgresql
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.models.db import session, engine
 
@@ -32,7 +32,7 @@ def filter_period(model, period):
                "1M": 30,
                "1y": 365}
 
-    time_pass = datetime.now() - timedelta(days=int(periods[period]))     # TODO перевести все время вообще в UTC
+    time_pass = datetime.now(tz=timezone.utc) - timedelta(days=int(periods[period]))     
     filter = cast(model.date, DATE) >= time_pass
     return filter
 

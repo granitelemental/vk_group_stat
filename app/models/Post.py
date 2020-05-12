@@ -11,7 +11,7 @@ class Post(BaseModel, BaseMixin):
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
     vk_id = Column(Integer, nullable = False)
     group_id = Column(Integer, nullable = False) # TODO Add relation
-    date = Column(DateTime)
+    date = Column(DateTime, nullable=False)
     data = Column(JSON)
     comments_count = Column(Integer, nullable=False)
     reposts_count = Column(Integer, nullable=False)
