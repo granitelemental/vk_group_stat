@@ -1,5 +1,5 @@
 from sqlalchemy.sql.expression import between
-from sqlalchemy import tuple_, func, cast, DATE, String, extract, case, and_, text, INTEGER
+from sqlalchemy import tuple_, func, cast, DATE, String, extract, case, and_, text, INTEGER, FLOAT
 from flask import Flask, jsonify, request, Response
 from flask_cors import CORS
 from datetime import datetime, timedelta, timezone
@@ -29,15 +29,20 @@ from app.api.routers.auth import Router as AuthRouter
 
 
 def edit_group_join(json, is_subscribed):
-    item = {"user_id": json["object"]["user_id"], 
-            "group_id": json["group_id"],
-            "is_subscribed":  is_subscribed, 
-            "event_vk_id": json["event_id"]}
+    item = {
+        "user_id": json["object"]["user_id"], 
+        "group_id": json["group_id"],
+        "is_subscribed":  is_subscribed, 
+        "event_vk_id": json["event_id"],
+        "date": datetime.now(tz=timezone.utc).timestamp()
+            }
     upsert(item, SubscriptionEvent, ["event_vk_id"])
 
-    item = {"user_id": item["user_id"],
-            "group_id": item["group_id"],
-            "is_subscribed": item["is_subscribed"]}
+    item = {
+        "user_id": item["user_id"],
+        "group_id": item["group_id"],
+        "is_subscribed": item["is_subscribed"]
+        }
     upsert(item, Subscription, ["user_id", "group_id"])
     print("---->")
 
@@ -47,12 +52,42 @@ def edit_group_join(json, is_subscribed):
 
 
 def add_repost(json):
-    item = {"user_id": json["object"]["from_id"],
-            "post_id": Post.post_vk_to_db_id(json["object"]["copy_history"][0]["id"], json["group_id"]),
-            "group_id": json["group_id"],
-            "date": date_from_timestamp(json["object"]["date"]),
-            "event_vk_id": json["event_id"]}
+    item = {
+        "user_id": json["object"]["from_id"],
+        "post_id": Post.post_vk_to_db_id(json["object"]["copy_history"][0]["id"], json["group_id"]),
+        "group_id": json["group_id"],
+        "date": json["object"]["date"],
+        "event_vk_id": json["event_id"]
+        }
     upsert(item, Repost, ["event_vk_id"])
+
+def get_count_timeline(entity, timestamps, window):
+    start = timestamps[0]
+    end = timestamps[-1]
+    subquery = session.query(
+        cast(
+            func.generate_series(start, end, 1), 
+            INTEGER
+            ).label('ts'), 
+        cast(
+            func.row_number().over(order_by=func.generate_series(start, end, 1)) / window
+            ,INTEGER
+            ).label('row_number')).subquery()
+
+    not_null_counts = session.query( 
+        cast(
+            start + (subquery.c.row_number - 1) * window, 
+            INTEGER
+            ),
+        func.count(entity.id)    
+        ).outerjoin(
+        subquery,
+        subquery.c.ts == entity.date
+        ).group_by(subquery.c.row_number).all()
+
+    not_null_counts = dict([res for res in not_null_counts if res[0] != None])
+    counts = [not_null_counts.get(ts, 0) for ts in timestamps]
+    return counts
 
 
 app = Flask('API')
@@ -65,42 +100,31 @@ AuthRouter(app)
 def ping():
     return jsonify({'ok': True})
 
-@response
+
 @app.route("/api/v1.0/events/timeline")
+@response
 def get_timeline():
-    """time_window: d | M | h | w | m , entities: 'posts,likes,comments,reposts' (string), start and end - string  %Y-%m-%d %H:%M:%S """
-    format = '%Y-%m-%d %H:%M:%S'
-    default_start = (datetime.now(tz=datetime.utc) - timedelta(hours=1000)).strftime(format)
-    default_end = datetime.now(tz=datetime.utc).strftime(format)
-
-    start = request.args.get('from', default_start) # 
-    end = request.args.get('to', default_end) # 
-
-    start = datetime.strptime(start, format).timestamp()
-    end = datetime.strptime(end, format).timestamp()
-
-    windows = {'y': 12*30*7*24*3600, 'M': 30*7*24*3600, 'w': 7*24*3600, 'd': 24*3600, 'h': 3600, 'm': 60}
-    window = windows[request.args.get('time_window', 'm')]
-    
-    entities = {'likes': Like, 'posts': Post, 'comments': Comment, 'reposts': Repost}
-    entity = entities[request.args.get('entities', 'likes')]
-
-    
-    grouper_by = cast(
-        (extract('epoch', entity.date) - start) / window, 
-        INTEGER
-        ) 
-    filter_by = and_(
-        extract('epoch', entity.date) <= end, 
-        extract('epoch', entity.date) > start
-        )
-
-    result = session.query(
-        grouper_by * window + start, 
-        func.count(entity.id) 
-        ).filter(filter_by).group_by(grouper_by).all()
-
-    return {"ok": True, "data": result, "start": str(start), "end": str(end), "time_window": window}
+    """time_window: num of sec , entities: 'posts,likes,comments,reposts' (string), start and end - string  %Y-%m-%d %H:%M:%S """
+    default_start = int((datetime.now(tz=timezone.utc) - timedelta(hours=48)).timestamp())
+    default_end = int(datetime.now(tz=timezone.utc).timestamp())
+    start = request.args.get('from', default_start) 
+    end = request.args.get('to', default_end) 
+    window = int(request.args.get('time_window', '3600'))
+    entities_dict = {'likes': Like, 'posts': Post, 'comments': Comment, 'reposts': Repost}
+    entities = request.args.get('entities', 'likes').split(",")
+    timestamps = [i for i in range(start, end + 1, window)]
+    series = []
+    for entity in entities:
+        series.append({
+            "type": entity,
+            "data": get_count_timeline(entities_dict[entity], timestamps, window)})
+    return {
+        "timestamps": timestamps,
+        "series": series,
+        "from": start,
+        "to": end,
+        "window": window,
+        }
 
 
 @app.route("/api/v1.0/stats/users/distribution")

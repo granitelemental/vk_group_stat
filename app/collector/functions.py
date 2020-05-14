@@ -18,7 +18,6 @@ from app.models.db import BaseModel  # BaseModel запоминает, что о
 
 from app.utils.log import init_logger
 from app.utils.db import upsert
-from app.utils.time import date_from_timestamp
 
 from app.config import app_token, vk_api_version
 
@@ -70,7 +69,7 @@ def get_posts(group_id, count):
             "group_id": group_id, 
             "data": post, 
             "vk_id": post["id"], 
-            "date": date_from_timestamp(post['date']),
+            "date": post['date'],
             "comments_count": post.get("comments", {}).get("count", 0),
             "reposts_count": post.get("reposts", {}).get("count", 0),
             "likes_count": post.get("likes", {}).get("count", 0),
@@ -91,11 +90,13 @@ def get_comments(posts, group_id):
             )
             return res["items"], res["count"]
         post_comments = get_all(get_post_comments, 200)
-        post_comments = [{"group_id": group_id, 
-                        "post_id": post["id"],  
-                        "user_id": comment["from_id"],
-                        "data": comment["text"], 
-                        "date": date_from_timestamp(comment['date'])} for comment in post_comments]
+        post_comments = [{
+            "group_id": group_id, 
+            "post_id": post["id"],  
+            "user_id": comment["from_id"],
+            "data": comment["text"], 
+            "date": comment['date']
+            } for comment in post_comments]
         all_post_comments.extend(post_comments)
     return all_post_comments
 
@@ -114,7 +115,7 @@ def get_likes(posts, group_id):
         post_likes = [{"group_id": group_id,
                         "post_id": post["id"], 
                         "user_id": user_id, 
-                        "date": datetime.now(tz=timezone.utc)} 
+                        "date": datetime.now(tz=timezone.utc).timestamp()} 
                         for user_id in get_all(get_post_likes, 200)]
         all_post_likes.extend(post_likes)
     return all_post_likes

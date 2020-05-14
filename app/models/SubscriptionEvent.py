@@ -15,7 +15,7 @@ class SubscriptionEvent(BaseModel, BaseMixin):
     id = Column(Integer, primary_key = True, autoincrement = True, nullable = False)
     group_id = Column(Integer, ForeignKey('groups.vk_id'), nullable=False)
     user_id = Column(Integer, ForeignKey('users.vk_id'), nullable = False)
-    date = Column(DateTime, default = datetime.now(tz=timezone.utc))
+    date = Column(Integer, nullable = False)
     is_subscribed = Column(Boolean, nullable = False)
     event_vk_id = Column(String, nullable = False)
 
