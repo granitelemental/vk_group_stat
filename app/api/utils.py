@@ -6,6 +6,14 @@ import jwt
 
 from app.api.errors import *
 
+def try_except(fn):
+     def wrapped(*args, **kwargs):
+          try:
+               return fn(*args, **kwargs)
+          except Exception as e:
+               print(e)
+     return wrapped
+
 def response(fn):
     @wraps(fn)
     def wrapped(*args, **kwargs):

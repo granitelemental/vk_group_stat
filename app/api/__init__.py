@@ -22,7 +22,6 @@ from app.utils.db import filter_period, upsert
 from app.utils.time import date_from_timestamp
 from app.api.utils import response
 
-
 import app.config as config
 
 from app.api.routers.auth import Router as AuthRouter
@@ -50,7 +49,6 @@ def edit_group_join(json, is_subscribed):
     item["is_subscribed"] = is_subscribed
     upsert(item, User, ["vk_id"])
 
-
 def add_repost(json):
     item = {
         "user_id": json["object"]["from_id"],
@@ -61,7 +59,7 @@ def add_repost(json):
         }
     upsert(item, Repost, ["event_vk_id"])
 
-def get_count_timeline(entity, timestamps, window):
+def get_event_counts(entity, timestamps, window):
     start = timestamps[0]
     end = timestamps[-1]
     subquery = session.query(
@@ -76,7 +74,7 @@ def get_count_timeline(entity, timestamps, window):
 
     not_null_counts = session.query( 
         cast(
-            start + (subquery.c.row_number - 1) * window, 
+            start + (subquery.c.row_number) * window, 
             INTEGER
             ),
         func.count(entity.id)    
@@ -89,12 +87,9 @@ def get_count_timeline(entity, timestamps, window):
     counts = [not_null_counts.get(ts, 0) for ts in timestamps]
     return counts
 
-
 app = Flask('API')
 CORS(app)
-
 AuthRouter(app)
-
 
 @app.route("/")
 def ping():
@@ -105,19 +100,22 @@ def ping():
 @response
 def get_timeline():
     """time_window: num of sec , entities: 'posts,likes,comments,reposts' (string), start and end - string  %Y-%m-%d %H:%M:%S """
-    default_start = int((datetime.now(tz=timezone.utc) - timedelta(hours=48)).timestamp())
+    default_start = int((datetime.now(tz=timezone.utc) - timedelta(hours=1)).timestamp())
     default_end = int(datetime.now(tz=timezone.utc).timestamp())
+
     start = request.args.get('from', default_start) 
     end = request.args.get('to', default_end) 
     window = int(request.args.get('time_window', '3600'))
     entities_dict = {'likes': Like, 'posts': Post, 'comments': Comment, 'reposts': Repost}
     entities = request.args.get('entities', 'likes').split(",")
+
     timestamps = [i for i in range(start, end + 1, window)]
     series = []
     for entity in entities:
         series.append({
             "type": entity,
-            "data": get_count_timeline(entities_dict[entity], timestamps, window)})
+            "data": get_event_counts(entities_dict[entity], timestamps, window)})
+
     return {
         "timestamps": timestamps,
         "series": series,
@@ -170,7 +168,7 @@ def add_vk_event():
 
 
 @app.route("/api/v1.0/stats/events/activity")
-def get_activity():
+def get_activity_counts():
     period = request.args.get("period", "1w")
 
     posts_count = session.query(func.count(Post.id)).filter(filter_period(Post, period)).scalar()

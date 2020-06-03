@@ -17,19 +17,23 @@ from app.models.SubscriptionEvent import SubscriptionEvent
 from app.models.User import User
 
 from app.collector.functions import get_all, get_posts, get_comments, get_likes,\
-     get_subscribers, get_users_by_ids, compute_user_ids, get_group_id_by_name
+     get_subscribers, get_users_by_ids, compute_user_ids, get_group_id_by_name, collect_notifications
 from app.utils.db import upsert, bulk_upsert_or_insert
 from app.utils.log import init_logger
 from app.utils.collections import get_diff_by
+from app.api.utils import try_except
 from app.config import comunity_token, screen_name, collector_period, init_posts_num, watch_posts_num
 
 log = init_logger('collector', 'DEBUG')
-  
+
+
+
+@try_except
 def collect_vk_data(N_posts = 100, initial = True):
      if initial:
-          log.info("INITIAL COLLECTING")
+          log.info("INITIAL")
      else:
-          log.info("WATCH COLLECTING")
+          log.info("WATCH")
 
      group_id = get_group_id_by_name(screen_name)
 
@@ -77,6 +81,8 @@ def start_collector():
      while True:
           collect_vk_data(N_posts = watch_posts_num, initial = False)
           sleep(collector_period)
+     print(collect_notifications(user_token=comunity_token))
+     
 
 
 

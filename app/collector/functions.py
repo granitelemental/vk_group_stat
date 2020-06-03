@@ -21,9 +21,15 @@ from app.utils.db import upsert
 
 from app.config import app_token, vk_api_version
 
-vk_session = vk.Session(access_token = app_token)
+vk_session = vk.Session(access_token=app_token)
 vk_api = vk.API(vk_session, v = vk_api_version)
+print(app_token)
+print(vk_api_version)
 
+def collect_notifications(user_token):
+    #start_time=start_time, end_time=endtime_time
+    notifications = vk_api.notifications.get(user_token=user_token)
+    return notifications
 
 def get_all(get_function, max_count):
     """get_function - function which collects data from api;
